@@ -2,10 +2,12 @@ package com.suvye.unlockreminder
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationManagerCompat
 
 class ReminderActivity : AppCompatActivity() {
 
@@ -17,19 +19,10 @@ class ReminderActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.view_reminder)
-
-        val elapsed = intent.getLongExtra(EXTRA_ELAPSED, 0L)
-        val usage = intent.getStringArrayListExtra(EXTRA_USAGE) ?: arrayListOf()
-
-        findViewById<TextView>(R.id.elapsedText).text =
-            getString(R.string.elapsed_prefix) + " " + UsageStatsHelper.formatDuration(elapsed)
-
-        val usageView = findViewById<TextView>(R.id.usageText)
-        usageView.text = when {
-            usage.isNotEmpty() -> usage.joinToString("\n")
-            UsageStatsHelper.hasUsageAccess(this) -> getString(R.string.usage_empty)
-            else -> getString(R.string.usage_empty_no_perm)
-        }
+        // 部分 ROM 会忽略清单里的 showWhenLocked/turnScreenOn，代码层面再设一遍
+        setShowWhenLocked(true)
+        setTurnScreenOn(true)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         findViewById<Button>(R.id.btnConfirm).setOnClickListener {
             startService(
@@ -45,6 +38,31 @@ class ReminderActivity : AppCompatActivity() {
                 cancelRound()
             }
         })
+
+        bind(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        bind(intent)
+    }
+
+    private fun bind(intent: Intent) {
+        // 走到提醒页就清掉兜底的高优通知，避免处理后残留
+        NotificationManagerCompat.from(this).cancel(MonitorService.NOTIF_ALARM)
+
+        val elapsed = intent.getLongExtra(EXTRA_ELAPSED, 0L)
+        val usage = intent.getStringArrayListExtra(EXTRA_USAGE) ?: arrayListOf()
+
+        findViewById<TextView>(R.id.elapsedText).text =
+            getString(R.string.elapsed_prefix) + " " + UsageStatsHelper.formatDuration(elapsed)
+
+        findViewById<TextView>(R.id.usageText).text = when {
+            usage.isNotEmpty() -> usage.joinToString("\n")
+            UsageStatsHelper.hasUsageAccess(this) -> getString(R.string.usage_empty)
+            else -> getString(R.string.usage_empty_no_perm)
+        }
     }
 
     private fun cancelRound() {

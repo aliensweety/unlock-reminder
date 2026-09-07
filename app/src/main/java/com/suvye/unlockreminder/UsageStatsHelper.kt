@@ -34,20 +34,28 @@ object UsageStatsHelper {
         val totals = HashMap<String, Long>()
         val open = HashMap<String, Long>()
 
-        val events = usm.queryEvents(maxOf(0L, from - lookbackMs), to)
+        val events = try {
+            usm.queryEvents(maxOf(0L, from - lookbackMs), to)
+        } catch (_: Exception) {
+            return emptyList()
+        }
         val event = UsageEvents.Event()
-        while (events.hasNextEvent()) {
-            events.getNextEvent(event)
-            val pkg = event.packageName ?: continue
-            when (event.eventType) {
-                UsageEvents.Event.ACTIVITY_RESUMED -> {
-                    val prev = open[pkg]
-                    if (prev == null || event.timeStamp < prev) open[pkg] = event.timeStamp
-                }
-                UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED -> {
-                    settle(totals, open, pkg, event.timeStamp, from, to)
+        try {
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event)
+                val pkg = event.packageName ?: continue
+                when (event.eventType) {
+                    UsageEvents.Event.ACTIVITY_RESUMED -> {
+                        val prev = open[pkg]
+                        if (prev == null || event.timeStamp < prev) open[pkg] = event.timeStamp
+                    }
+                    UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED -> {
+                        settle(totals, open, pkg, event.timeStamp, from, to)
+                    }
                 }
             }
+        } catch (_: Exception) {
+            // 个别 OEM 事件流异常：用已收集到的部分结算
         }
         for (pkg in open.keys.toList()) {
             settle(totals, open, pkg, to, from, to)

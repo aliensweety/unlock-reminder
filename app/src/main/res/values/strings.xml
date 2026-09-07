@@ -4,6 +4,7 @@
     <string name="monitor_hint">监控中 · 解锁后自动开始倒计时</string>
     <string name="countdown_title">距离下次提醒</string>
     <string name="countdown_body">点按停止本轮</string>
+    <string name="btn_stop_short">停止本轮</string>
     <string name="time_up">时间到</string>
     <string name="tap_to_view">本轮解锁后使用时长统计</string>
     <string name="elapsed_prefix">本轮已使用</string>

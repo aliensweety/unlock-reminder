@@ -34,7 +34,7 @@ class MonitorService : Service() {
 
         private const val NOTIF_MONITOR = 1
         private const val NOTIF_COUNTDOWN = 2
-        private const val NOTIF_ALARM = 3
+        const val NOTIF_ALARM = 3
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -66,6 +66,7 @@ class MonitorService : Service() {
         receiverRegistered = true
         startForeground(NOTIF_MONITOR, buildMonitorNotification())
         Prefs.setRunning(this, true)
+        recoverRoundIfNeeded()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -77,14 +78,28 @@ class MonitorService : Service() {
     }
 
     override fun onDestroy() {
-        handler.removeCallbacks(fireRunnable)
         overlayReminder.close()
+        cancelRound()
         if (receiverRegistered) unregisterReceiver(screenReceiver)
         Prefs.setRunning(this, false)
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    /** 服务被系统杀死后重建（走不到 onDestroy）：恢复未到期的一轮，过期脏数据直接清理 */
+    private fun recoverRoundIfNeeded() {
+        val start = Prefs.roundStart(this)
+        if (start <= 0L) return
+        val remaining = Prefs.intervalSeconds(this) * 1000L - (System.currentTimeMillis() - start)
+        if (remaining > 0L) {
+            roundStart = start
+            handler.postDelayed(fireRunnable, remaining)
+            showCountdownNotification(remaining)
+        } else {
+            Prefs.clearRound(this)
+        }
+    }
 
     /** 浮层「确定 · 再来一轮」回调 */
     fun onOverlayConfirm() {
@@ -182,6 +197,7 @@ class MonitorService : Service() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(stopIntent)
+            .addAction(0, getString(R.string.btn_stop_short), stopIntent)
             .build()
         safeNotify(NOTIF_COUNTDOWN, notification)
     }
@@ -219,8 +235,9 @@ class MonitorService : Service() {
         nm.createNotificationChannel(
             NotificationChannel(CH_COUNTDOWN, getString(R.string.ch_countdown), NotificationManager.IMPORTANCE_LOW)
         )
-        nm.createNotificationChannel(
-            NotificationChannel(CH_ALARM, getString(R.string.ch_alarm), NotificationManager.IMPORTANCE_HIGH)
-        )
+        val alarmChannel = NotificationChannel(CH_ALARM, getString(R.string.ch_alarm), NotificationManager.IMPORTANCE_HIGH)
+        alarmChannel.enableVibration(true)
+        alarmChannel.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        nm.createNotificationChannel(alarmChannel)
     }
 }

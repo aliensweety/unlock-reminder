@@ -145,9 +145,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
         btnPermOverlay.setOnClickListener {
-            startActivity(
-                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
-            )
+            try {
+                startActivity(
+                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                )
+            } catch (_: Exception) {
+                openAppDetails()
+            }
         }
         btnPermBattery.setOnClickListener {
             try {
@@ -180,11 +184,16 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 服务健康兜底：开关应开着但服务被杀（START_STICKY 尚未拉起）时立即重建
+        if (Prefs.isRunning(this)) {
+            ContextCompat.startForegroundService(this, Intent(this, MonitorService::class.java))
+        }
         refreshAll()
         handler.post(ticker)
     }
 
     override fun onPause() {
+        applyCustom()
         handler.removeCallbacks(ticker)
         super.onPause()
     }
