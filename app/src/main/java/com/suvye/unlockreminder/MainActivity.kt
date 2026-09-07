@@ -104,7 +104,10 @@ class MainActivity : AppCompatActivity() {
                 ContextCompat.startForegroundService(this, Intent(this, MonitorService::class.java))
                 Toast.makeText(this, "监控已开启，锁屏再解锁即开始倒计时", Toast.LENGTH_SHORT).show()
             } else {
-                stopService(Intent(this, MonitorService::class.java))
+                startService(
+                    Intent(this, MonitorService::class.java)
+                        .setAction(MonitorService.ACTION_STOP_MONITOR)
+                )
                 Toast.makeText(this, "监控已关闭", Toast.LENGTH_SHORT).show()
             }
         }

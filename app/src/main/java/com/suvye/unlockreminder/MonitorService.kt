@@ -27,6 +27,7 @@ class MonitorService : Service() {
     companion object {
         const val ACTION_START_ROUND = "com.suvye.unlockreminder.action.START_ROUND"
         const val ACTION_CANCEL_ROUND = "com.suvye.unlockreminder.action.CANCEL_ROUND"
+        const val ACTION_STOP_MONITOR = "com.suvye.unlockreminder.action.STOP_MONITOR"
 
         private const val CH_MONITOR = "monitor"
         private const val CH_COUNTDOWN = "countdown"
@@ -41,6 +42,7 @@ class MonitorService : Service() {
     private val overlayReminder = OverlayReminder(this)
     private var roundStart = 0L
     private var receiverRegistered = false
+    private var userStop = false
 
     private val fireRunnable = Runnable { fire() }
 
@@ -77,15 +79,30 @@ class MonitorService : Service() {
         when (intent?.action) {
             ACTION_START_ROUND -> startRound()
             ACTION_CANCEL_ROUND -> cancelRound()
+            ACTION_STOP_MONITOR -> {
+                userStop = true
+                cancelRound()
+                Prefs.setRunning(this, false)
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
         }
         return START_STICKY
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(fireRunnable)
         overlayReminder.close()
-        cancelRound()
+        // 通知无论如何都撤掉；本轮状态只在用户主动关闭时清，
+        // 系统回收服务（会走 onDestroy 再 sticky 重启）时保留，交给 recoverRoundIfNeeded 恢复
+        val nm = NotificationManagerCompat.from(this)
+        nm.cancel(NOTIF_COUNTDOWN)
+        nm.cancel(NOTIF_ALARM)
         if (receiverRegistered) unregisterReceiver(screenReceiver)
-        Prefs.setRunning(this, false)
+        if (userStop) {
+            Prefs.setRunning(this, false)
+            Prefs.clearRound(this)
+        }
         super.onDestroy()
     }
 

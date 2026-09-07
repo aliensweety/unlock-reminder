@@ -30,7 +30,8 @@ object UsageStatsHelper {
         val usm = ctx.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
             ?: return emptyList()
 
-        val lookbackMs = 30 * 60 * 1000L
+        // 回看 6 小时：防「RESUMED 早于窗口 + 一直没 PAUSED」的长会话漏记，超出本轮的段会被夹紧
+        val lookbackMs = 6 * 60 * 60 * 1000L
         val totals = HashMap<String, Long>()
         // 按包名做 open/close 计数配平：应用内切页是新 Activity 先 RESUMED、旧 Activity 后 PAUSED，
         // 简单的开/关记录会把会话提前关掉漏记，计数法才能扛住多 Activity 与分屏
