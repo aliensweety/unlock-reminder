@@ -1,6 +1,7 @@
 package com.suvye.unlockreminder
 
 import android.Manifest
+import android.app.NotificationManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -46,6 +47,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnPermUsage: Button
     private lateinit var btnPermOverlay: Button
     private lateinit var btnPermBattery: Button
+    private lateinit var btnPermFsi: Button
 
     private val handler = Handler(Looper.getMainLooper())
     private var suppressSwitch = false
@@ -70,6 +72,7 @@ class MainActivity : AppCompatActivity() {
         btnPermUsage = findViewById(R.id.btnPermUsage)
         btnPermOverlay = findViewById(R.id.btnPermOverlay)
         btnPermBattery = findViewById(R.id.btnPermBattery)
+        btnPermFsi = findViewById(R.id.btnPermFsi)
 
         spinnerInterval.adapter = ArrayAdapter(
             this,
@@ -162,6 +165,17 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        // Android 14 起全屏意图默认不授予，入口放进应用通知设置页
+        btnPermFsi.setOnClickListener {
+            try {
+                startActivity(
+                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                )
+            } catch (_: Exception) {
+                openAppDetails()
+            }
+        }
     }
 
     override fun onResume() {
@@ -222,16 +236,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshPerms() {
-        btnPermNotif.text = if (notifGranted()) "① 通知权限：已允许" else "① 通知权限：未允许（点按开启）"
-        btnPermUsage.text =
-            if (UsageStatsHelper.hasUsageAccess(this)) "② 使用情况访问：已允许" else "② 使用情况访问：未允许（点按开启）"
-        btnPermOverlay.text =
-            if (Settings.canDrawOverlays(this)) "③ 悬浮窗权限：已允许" else "③ 悬浮窗权限：未允许（点按开启）"
+        btnPermNotif.text = mark(notifGranted(), "① 通知权限")
+        btnPermUsage.text = mark(UsageStatsHelper.hasUsageAccess(this), "② 使用情况访问")
+        btnPermOverlay.text = mark(Settings.canDrawOverlays(this), "③ 悬浮窗权限")
         val pm = getSystemService(PowerManager::class.java)
         btnPermBattery.text =
-            if (pm?.isIgnoringBatteryOptimizations(packageName) == true) "④ 电池优化白名单：已加入"
-            else "④ 电池优化白名单：未加入（点按开启）"
+            mark(pm?.isIgnoringBatteryOptimizations(packageName) == true, "④ 电池优化白名单")
+        val fsiVisible = Build.VERSION.SDK_INT >= 34
+        btnPermFsi.visibility = if (fsiVisible) View.VISIBLE else View.GONE
+        if (fsiVisible) {
+            val nm = getSystemService(NotificationManager::class.java)
+            btnPermFsi.text = mark(nm?.canUseFullScreenIntent() == true, "⑤ 全屏弹出（全屏意图）")
+        }
     }
+
+    private fun mark(ok: Boolean, label: String): String =
+        if (ok) "$label：✓ 已允许" else "$label：✗ 未允许（点按开启）"
 
     private fun applyCustom() {
         val text = editCustom.text?.toString()?.trim().orEmpty()

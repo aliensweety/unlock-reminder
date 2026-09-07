@@ -1,4 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.App" parent="Theme.Material3.DayNight.NoActionBar" />
+    <style name="Theme.App" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/brand_primary</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">@color/brand_container</item>
+        <item name="colorOnPrimaryContainer">#10125C</item>
+    </style>
+
+    <style name="Theme.App.Reminder">
+        <item name="android:windowBackground">@color/reminder_background</item>
+        <item name="android:statusBarColor">@color/reminder_background</item>
+        <item name="android:navigationBarColor">@color/reminder_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="PermButton" parent="Widget.Material3.Button.TonalButton">
+        <item name="android:insetTop">3dp</item>
+        <item name="android:insetBottom">3dp</item>
+        <item name="android:textSize">14sp</item>
+    </style>
 </resources>

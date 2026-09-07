@@ -34,6 +34,7 @@
             android:exported="false"
             android:launchMode="singleTask"
             android:showWhenLocked="true"
+            android:theme="@style/Theme.App.Reminder"
             android:turnScreenOn="true" />
 
         <service

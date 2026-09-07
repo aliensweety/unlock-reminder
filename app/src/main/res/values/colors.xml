@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#3F51B5</color>
-    <color name="reminder_background">#141218</color>
+    <color name="brand_primary">#3F51B5</color>
+    <color name="brand_container">#DFE2FF</color>
+    <color name="reminder_background">#131117</color>
+    <color name="reminder_card">#221F2B</color>
+    <color name="reminder_text_secondary">#C9C5D0</color>
+    <color name="reminder_outline">#57505F</color>
 </resources>
