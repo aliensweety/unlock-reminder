@@ -32,7 +32,10 @@ object UsageStatsHelper {
 
         val lookbackMs = 30 * 60 * 1000L
         val totals = HashMap<String, Long>()
-        val open = HashMap<String, Long>()
+        // 按包名做 open/close 计数配平：应用内切页是新 Activity 先 RESUMED、旧 Activity 后 PAUSED，
+        // 简单的开/关记录会把会话提前关掉漏记，计数法才能扛住多 Activity 与分屏
+        val openCount = HashMap<String, Int>()
+        val resumeAt = HashMap<String, Long>()
 
         val events = try {
             usm.queryEvents(maxOf(0L, from - lookbackMs), to)
@@ -46,20 +49,34 @@ object UsageStatsHelper {
                 val pkg = event.packageName ?: continue
                 when (event.eventType) {
                     UsageEvents.Event.ACTIVITY_RESUMED -> {
-                        val prev = open[pkg]
-                        if (prev == null || event.timeStamp < prev) open[pkg] = event.timeStamp
+                        val c = openCount[pkg] ?: 0
+                        openCount[pkg] = c + 1
+                        if (c == 0) resumeAt[pkg] = event.timeStamp
                     }
                     UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED -> {
-                        settle(totals, open, pkg, event.timeStamp, from, to)
+                        val c = openCount[pkg]
+                        if (c != null) {
+                            if (c <= 1) {
+                                openCount.remove(pkg)
+                                val start = resumeAt.remove(pkg)
+                                if (start != null) credit(totals, pkg, start, event.timeStamp, from, to)
+                            } else {
+                                openCount[pkg] = c - 1
+                            }
+                        }
                     }
                 }
             }
         } catch (_: Exception) {
             // 个别 OEM 事件流异常：用已收集到的部分结算
         }
-        for (pkg in open.keys.toList()) {
-            settle(totals, open, pkg, to, from, to)
+        // 到窗口末尾仍未 PAUSED 的会话：正常计到窗口末尾，但防强杀/崩溃的僵尸会话整轮误记，截断 15 分钟
+        for (pkg in resumeAt.keys.toList()) {
+            val start = resumeAt[pkg] ?: continue
+            credit(totals, pkg, start, minOf(to, start + 15 * 60 * 1000L), from, to)
         }
+        openCount.clear()
+        resumeAt.clear()
 
         val homePkg = try {
             val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
@@ -82,18 +99,17 @@ object UsageStatsHelper {
             }
     }
 
-    /** 结算一个包的未闭合会话：只统计与提醒窗口 [from, to] 的交集 */
-    private fun settle(
+    /** 记入一段时长：只统计与提醒窗口 [from, to] 的交集 */
+    private fun credit(
         totals: HashMap<String, Long>,
-        open: HashMap<String, Long>,
         pkg: String,
-        endTime: Long,
+        start: Long,
+        end: Long,
         from: Long,
         to: Long
     ) {
-        val start = open.remove(pkg) ?: return
         val s = maxOf(start, from)
-        val e = minOf(endTime, to)
+        val e = minOf(end, to)
         if (e > s) totals[pkg] = (totals[pkg] ?: 0L) + (e - s)
     }
 

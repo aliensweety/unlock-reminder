@@ -1,6 +1,7 @@
 package com.suvye.unlockreminder
 
 import android.graphics.PixelFormat
+import android.view.ContextThemeWrapper
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
@@ -19,7 +20,9 @@ class OverlayReminder(private val host: MonitorService) {
     fun show(elapsed: Long, usage: List<String>): Boolean {
         if (view != null) return true
         val wm = host.getSystemService(WindowManager::class.java) ?: return false
-        val v = LayoutInflater.from(host).inflate(R.layout.view_reminder, null)
+        // 服务上下文包一层 M3 主题，保证 Material 组件可靠 inflate
+        val themed = ContextThemeWrapper(host, R.style.Theme_App)
+        val v = LayoutInflater.from(themed).inflate(R.layout.view_reminder, null)
 
         v.findViewById<TextView>(R.id.elapsedText).text =
             host.getString(R.string.elapsed_prefix) + " " + UsageStatsHelper.formatDuration(elapsed)
@@ -30,6 +33,10 @@ class OverlayReminder(private val host: MonitorService) {
         }
         v.findViewById<Button>(R.id.btnConfirm).setOnClickListener { host.onOverlayConfirm() }
         v.findViewById<Button>(R.id.btnCancel).setOnClickListener { host.onOverlayCancel() }
+        // 返回键只有落在持有焦点的 View 上才会进 OnKeyListener
+        v.isFocusable = true
+        v.isFocusableInTouchMode = true
+        v.requestFocus()
         v.setOnKeyListener { _, keyCode, event ->
             if (event.action == KeyEvent.ACTION_UP && keyCode == KeyEvent.KEYCODE_BACK) {
                 host.onOverlayCancel()
