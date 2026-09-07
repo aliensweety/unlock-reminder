@@ -147,7 +147,13 @@ class MonitorService : Service() {
             scheduledRoundId = start
             handler.postDelayed(fireRunnable, remaining)
             showCountdownNotification(remaining)
+        } else if (-remaining <= 120_000L) {
+            // 精确闹钟刚叫醒、deadline 刚过（时序抖动在宽限内）：立即补 fire，别把这一轮吃掉
+            roundStart = start
+            scheduledRoundId = start
+            handler.post(fireRunnable)
         } else {
+            // 过期太久（长时间死亡后的陈旧轮）：丢弃
             Prefs.clearRound(this)
         }
     }
