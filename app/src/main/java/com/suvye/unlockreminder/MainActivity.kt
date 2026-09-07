@@ -249,8 +249,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun notifGranted(): Boolean =
         Build.VERSION.SDK_INT < 33 ||
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-            == PackageManager.PERMISSION_GRANTED
+            (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED)
 
     private fun openAppDetails() {
         startActivity(
