@@ -25,10 +25,12 @@ class ReminderActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         findViewById<Button>(R.id.btnConfirm).setOnClickListener {
-            startService(
-                Intent(this, MonitorService::class.java)
-                    .setAction(MonitorService.ACTION_START_ROUND)
-            )
+            if (Prefs.isRunning(this)) {
+                startService(
+                    Intent(this, MonitorService::class.java)
+                        .setAction(MonitorService.ACTION_START_ROUND)
+                )
+            }
             finish()
         }
         findViewById<Button>(R.id.btnCancel).setOnClickListener { cancelRound() }
@@ -66,10 +68,13 @@ class ReminderActivity : AppCompatActivity() {
     }
 
     private fun cancelRound() {
-        startService(
-            Intent(this, MonitorService::class.java)
-                .setAction(MonitorService.ACTION_CANCEL_ROUND)
-        )
+        // 监控已关时不要把服务误拉活，只关闭提醒页
+        if (Prefs.isRunning(this)) {
+            startService(
+                Intent(this, MonitorService::class.java)
+                    .setAction(MonitorService.ACTION_CANCEL_ROUND)
+            )
+        }
         finish()
     }
 }

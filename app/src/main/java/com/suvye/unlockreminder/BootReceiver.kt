@@ -10,10 +10,14 @@ class BootReceiver : BroadcastReceiver() {
         val action = intent.action ?: return
         if (action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_MY_PACKAGE_REPLACED) {
             if (Prefs.isRunning(context)) {
-                ContextCompat.startForegroundService(
-                    context,
-                    Intent(context, MonitorService::class.java)
-                )
+                try {
+                    ContextCompat.startForegroundService(
+                        context,
+                        Intent(context, MonitorService::class.java)
+                    )
+                } catch (_: Exception) {
+                    // 部分 ROM 限制开机起前台服务：静默放弃，用户打开 App 时会自愈
+                }
             }
         }
     }

@@ -56,15 +56,19 @@ class MonitorService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannels()
-        registerReceiver(
-            screenReceiver,
-            IntentFilter().apply {
-                addAction(Intent.ACTION_USER_PRESENT)
-                addAction(Intent.ACTION_SCREEN_OFF)
-            }
-        )
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_USER_PRESENT)
+            addAction(Intent.ACTION_SCREEN_OFF)
+        }
+        ContextCompat.registerReceiver(this, screenReceiver, filter, ContextCompat.RECEIVER_EXPORTED)
         receiverRegistered = true
-        startForeground(NOTIF_MONITOR, buildMonitorNotification())
+        val monitorNotif = buildMonitorNotification()
+        // Android 14 显式声明 specialUse 类型，避免 MissingForegroundServiceTypeException
+        if (Build.VERSION.SDK_INT >= 34) {
+            startForeground(NOTIF_MONITOR, monitorNotif, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(NOTIF_MONITOR, monitorNotif)
+        }
         Prefs.setRunning(this, true)
         recoverRoundIfNeeded()
     }
@@ -117,6 +121,8 @@ class MonitorService : Service() {
         roundStart = System.currentTimeMillis()
         Prefs.setRoundStart(this, roundStart)
         handler.removeCallbacks(fireRunnable)
+        // 清掉上一轮可能残留的到点通知
+        NotificationManagerCompat.from(this).cancel(NOTIF_ALARM)
         val intervalMs = Prefs.intervalSeconds(this) * 1000L
         handler.postDelayed(fireRunnable, intervalMs)
         showCountdownNotification(intervalMs)
@@ -169,6 +175,8 @@ class MonitorService : Service() {
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
+            // 亮屏解锁态 FSI 会降级成横幅，点按横幅走 contentIntent 进提醒页
+            .setContentIntent(fullScreenPending)
             .setFullScreenIntent(fullScreenPending, true)
             .build()
         safeNotify(NOTIF_ALARM, notification)
