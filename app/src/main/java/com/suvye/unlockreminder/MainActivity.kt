@@ -39,6 +39,8 @@ class MainActivity : AppCompatActivity() {
     )
 
     private lateinit var statusText: TextView
+    private lateinit var bannerText: TextView
+    private lateinit var fireResultText: TextView
     private lateinit var switchMonitor: MaterialSwitch
     private lateinit var spinnerInterval: Spinner
     private lateinit var customRow: LinearLayout
@@ -64,6 +66,8 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         statusText = findViewById(R.id.statusText)
+        bannerText = findViewById(R.id.bannerText)
+        fireResultText = findViewById(R.id.fireResultText)
         switchMonitor = findViewById(R.id.switchMonitor)
         spinnerInterval = findViewById(R.id.spinnerInterval)
         customRow = findViewById(R.id.customRow)
@@ -121,6 +125,30 @@ class MainActivity : AppCompatActivity() {
                     Intent(this, MonitorService::class.java)
                         .setAction(MonitorService.ACTION_START_ROUND)
                 )
+            }
+        }
+
+        // 自诊断测试：5 秒后到点，用户立刻切走，回来一眼看出全局弹窗是否通
+        findViewById<Button>(R.id.btnTestDelay).setOnClickListener {
+            if (!Prefs.isRunning(this)) {
+                Toast.makeText(this, "请先打开上方开关", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(this, "5 秒后到点！请立刻切到微信或桌面等待弹窗", Toast.LENGTH_LONG).show()
+                startService(
+                    Intent(this, MonitorService::class.java)
+                        .setAction(MonitorService.ACTION_START_ROUND)
+                        .putExtra(MonitorService.EXTRA_INTERVAL_OVERRIDE, 5L)
+                )
+            }
+        }
+
+        bannerText.setOnClickListener {
+            try {
+                startActivity(
+                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                )
+            } catch (_: Exception) {
+                openAppDetails()
             }
         }
 
@@ -245,6 +273,12 @@ class MainActivity : AppCompatActivity() {
             running -> "监控中 · 等待下次解锁"
             else -> "已停止 · 打开上方开关开始使用"
         }
+        // 悬浮窗是全局弹窗的唯一合法前提：没开就常驻警告横幅
+        bannerText.visibility =
+            if (running && !Settings.canDrawOverlays(this)) View.VISIBLE else View.GONE
+        val last = Prefs.lastFireResult(this)
+        fireResultText.visibility = if (last.isEmpty()) View.GONE else View.VISIBLE
+        fireResultText.text = "上次到点：$last"
     }
 
     private fun refreshPerms() {

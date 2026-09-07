@@ -17,10 +17,11 @@ class OverlayReminder(private val host: MonitorService) {
 
     private var view: View? = null
 
-    fun show(elapsed: Long, usage: List<String>): Boolean {
-        if (view != null) return true
-        val wm = host.getSystemService(WindowManager::class.java) ?: return false
-        // 服务上下文包一层 M3 主题，保证 Material 组件可靠 inflate
+    /** @return Pair(是否成功, 失败时的异常类别名) */
+    fun show(elapsed: Long, usage: List<String>): Pair<Boolean, String> {
+        if (view != null) return Pair(true, "")
+        val wm = host.getSystemService(WindowManager::class.java)
+            ?: return Pair(false, "NoWindowManager")
         val themed = ContextThemeWrapper(host, R.style.Theme_App)
         val v = LayoutInflater.from(themed).inflate(R.layout.view_reminder, null)
 
@@ -57,9 +58,9 @@ class OverlayReminder(private val host: MonitorService) {
         return try {
             wm.addView(v, params)
             view = v
-            true
-        } catch (_: Exception) {
-            false
+            Pair(true, "")
+        } catch (e: Exception) {
+            Pair(false, e.javaClass.simpleName)
         }
     }
 

@@ -7,6 +7,7 @@ object Prefs {
     private const val KEY_INTERVAL = "interval_seconds"
     private const val KEY_ROUND_START = "round_start"
     private const val KEY_RUNNING = "service_running"
+    private const val KEY_LAST_FIRE = "last_fire_result"
 
     const val DEFAULT_INTERVAL_SECONDS = 10L
     const val MIN_INTERVAL_SECONDS = 5L
@@ -35,5 +36,12 @@ object Prefs {
 
     fun setRunning(ctx: Context, running: Boolean) {
         sp(ctx).edit().putBoolean(KEY_RUNNING, running).apply()
+    }
+
+    /** 上次到点提醒走了哪条链路（自诊断：无需 adb 也能从用户界面看到卡在哪一步） */
+    fun lastFireResult(ctx: Context): String = sp(ctx).getString(KEY_LAST_FIRE, "").orEmpty()
+
+    fun setLastFire(ctx: Context, value: String) {
+        sp(ctx).edit().putString(KEY_LAST_FIRE, value).apply()
     }
 }

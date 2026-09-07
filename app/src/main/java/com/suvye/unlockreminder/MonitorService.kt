@@ -17,10 +17,14 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
+import android.net.Uri
 import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MonitorService : Service() {
 
@@ -28,6 +32,9 @@ class MonitorService : Service() {
         const val ACTION_START_ROUND = "com.suvye.unlockreminder.action.START_ROUND"
         const val ACTION_CANCEL_ROUND = "com.suvye.unlockreminder.action.CANCEL_ROUND"
         const val ACTION_STOP_MONITOR = "com.suvye.unlockreminder.action.STOP_MONITOR"
+
+        /** 诊断用：临时覆盖本轮间隔（秒），>0 时生效 */
+        const val EXTRA_INTERVAL_OVERRIDE = "interval_override"
 
         private const val CH_MONITOR = "monitor"
         private const val CH_COUNTDOWN = "countdown"
@@ -77,7 +84,7 @@ class MonitorService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START_ROUND -> startRound()
+            ACTION_START_ROUND -> startRound(intent.getLongExtra(EXTRA_INTERVAL_OVERRIDE, 0L))
             ACTION_CANCEL_ROUND -> cancelRound()
             ACTION_STOP_MONITOR -> {
                 userStop = true
@@ -134,13 +141,14 @@ class MonitorService : Service() {
         cancelRound()
     }
 
-    private fun startRound() {
+    private fun startRound(overrideSeconds: Long = 0L) {
         roundStart = System.currentTimeMillis()
         Prefs.setRoundStart(this, roundStart)
         handler.removeCallbacks(fireRunnable)
         // 清掉上一轮可能残留的到点通知
         NotificationManagerCompat.from(this).cancel(NOTIF_ALARM)
-        val intervalMs = Prefs.intervalSeconds(this) * 1000L
+        val seconds = if (overrideSeconds > 0) overrideSeconds else Prefs.intervalSeconds(this)
+        val intervalMs = seconds * 1000L
         handler.postDelayed(fireRunnable, intervalMs)
         showCountdownNotification(intervalMs)
     }
@@ -163,29 +171,35 @@ class MonitorService : Service() {
 
         NotificationManagerCompat.from(this).cancel(NOTIF_COUNTDOWN)
 
-        // 主路径：悬浮窗全屏浮层（不经过 Activity 启动栈，ROM 不拦）
-        if (Settings.canDrawOverlays(this) && overlayReminder.show(elapsed, usage)) {
-            return
+        // ── 主路径：悬浮窗全屏浮层（不经过 Activity 启动栈，ROM 不拦）──────────
+        val overlayGranted = Settings.canDrawOverlays(this)
+        if (overlayGranted) {
+            val (ok, error) = overlayReminder.show(elapsed, usage)
+            if (ok) {
+                markFire("全局浮层 ✓")
+                return
+            }
+            markFire("浮层失败($error)，已走兜底")
+        } else {
+            markFire("仅通知（未开悬浮窗）")
         }
 
-        // 兜底 1：部分 ROM 允许后台直接起 Activity
+        // ── 兜底1：直接起页面（有悬浮窗权限时多数 ROM 允许；MIUI 还需「后台弹出界面」）──
         val content = Intent(this, ReminderActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             .putExtra(ReminderActivity.EXTRA_ELAPSED, elapsed)
             .putStringArrayListExtra(ReminderActivity.EXTRA_USAGE, usage)
-        if (Settings.canDrawOverlays(this)) {
-            try {
-                startActivity(content)
-            } catch (_: Exception) {
-            }
+        try {
+            startActivity(content)
+        } catch (_: Exception) {
         }
 
-        // 兜底 2：全屏意图通知（亮屏解锁态是横幅，灭屏/锁屏才真全屏）
+        // ── 兜底2：FSI 高优通知（亮屏解锁态是横幅，灭屏/锁屏才真全屏）────────────
         val fullScreenPending = PendingIntent.getActivity(
             this, 0, content,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val notification = NotificationCompat.Builder(this, CH_ALARM)
+        val builder = NotificationCompat.Builder(this, CH_ALARM)
             .setSmallIcon(R.drawable.ic_stat_timer)
             .setContentTitle(getString(R.string.time_up))
             .setContentText(getString(R.string.tap_to_view))
@@ -195,8 +209,29 @@ class MonitorService : Service() {
             // 亮屏解锁态 FSI 会降级成横幅，点按横幅走 contentIntent 进提醒页
             .setContentIntent(fullScreenPending)
             .setFullScreenIntent(fullScreenPending, true)
-            .build()
-        safeNotify(NOTIF_ALARM, notification)
+
+        if (!overlayGranted) {
+            // 全局弹窗的唯一合法前提就是悬浮窗权限：在到点通知里给一键修复入口
+            val fixPending = PendingIntent.getActivity(
+                this, 2,
+                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(0, getString(R.string.fix_overlay), fixPending)
+        }
+        val stopPending = PendingIntent.getService(
+            this, 3,
+            Intent(this, MonitorService::class.java).setAction(ACTION_CANCEL_ROUND),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        builder.addAction(0, getString(R.string.btn_stop_short), stopPending)
+        safeNotify(NOTIF_ALARM, builder.build())
+    }
+
+    /** 把到点链路的实际走向记到主界面（自诊断：用户无需 adb 即可反馈卡在哪一步） */
+    private fun markFire(result: String) {
+        val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+        Prefs.setLastFire(this, "$result · $time")
     }
 
     /** 倒计时通知：RemoteViews + Chronometer（DeskClock 同款），比系统模板的 chronometer extras 更耐 ROM 定制 */

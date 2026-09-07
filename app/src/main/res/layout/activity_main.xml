@@ -47,6 +47,28 @@
             </LinearLayout>
         </LinearLayout>
 
+        <TextView
+            android:id="@+id/bannerText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_reminder_card"
+            android:backgroundTint="#FFF3E0"
+            android:padding="10dp"
+            android:text="@string/banner_no_overlay"
+            android:textColor="#B26A00"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/fireResultText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
         <com.google.android.material.card.MaterialCardView
             style="?attr/materialCardViewFilledStyle"
             android:layout_width="match_parent"
@@ -110,6 +132,14 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
                     android:text="@string/btn_test" />
+
+                <Button
+                    android:id="@+id/btnTestDelay"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="@string/btn_test_delay" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
