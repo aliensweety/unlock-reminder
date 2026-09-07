@@ -1,10 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#3F51B5</color>
-    <color name="brand_primary">#3F51B5</color>
-    <color name="brand_container">#DFE2FF</color>
-    <color name="reminder_background">#131117</color>
-    <color name="reminder_card">#221F2B</color>
-    <color name="reminder_text_secondary">#C9C5D0</color>
-    <color name="reminder_outline">#57505F</color>
+    <color name="ic_launcher_background">#0F6C6A</color>
+
+    <color name="md_primary">#0F6C6A</color>
+    <color name="md_on_primary">#FFFFFF</color>
+    <color name="md_primary_container">#A8F1ED</color>
+    <color name="md_on_primary_container">#00201F</color>
+
+    <color name="md_secondary">#4A6361</color>
+    <color name="md_on_secondary">#FFFFFF</color>
+    <color name="md_secondary_container">#CCE8E5</color>
+    <color name="md_on_secondary_container">#051F1E</color>
+
+    <color name="md_tertiary">#7C5800</color>
+    <color name="md_on_tertiary">#FFFFFF</color>
+    <color name="md_tertiary_container">#FFDEA6</color>
+    <color name="md_on_tertiary_container">#271900</color>
+
+    <color name="md_error">#BA1A1A</color>
+    <color name="md_on_error">#FFFFFF</color>
+    <color name="md_error_container">#FFDAD6</color>
+    <color name="md_on_error_container">#410002</color>
+
+    <color name="md_background">#F4FBFA</color>
+    <color name="md_on_background">#161D1C</color>
+    <color name="md_surface">#F4FBFA</color>
+    <color name="md_on_surface">#161D1C</color>
+    <color name="md_on_surface_variant">#3F4948</color>
+    <color name="md_surface_container_lowest">#FFFFFF</color>
+    <color name="md_surface_container_low">#EEF5F4</color>
+    <color name="md_surface_container">#E8F3F2</color>
+    <color name="md_surface_container_high">#E2EDEB</color>
+    <color name="md_surface_container_highest">#DCE7E6</color>
+    <color name="md_outline">#6F7978</color>
+    <color name="md_outline_variant">#BEC9C7</color>
+
+    <color name="reminder_background">#0B1414</color>
+    <color name="reminder_surface">#152020</color>
+    <color name="reminder_accent">#F5C349</color>
+    <color name="reminder_on_surface">#E6EFEF</color>
+    <color name="reminder_on_surface_variant">#B4C5C4</color>
+    <color name="reminder_button">#2A9D99</color>
+    <color name="reminder_on_button">#FFFFFF</color>
+    <color name="reminder_outline">#6F8A88</color>
 </resources>

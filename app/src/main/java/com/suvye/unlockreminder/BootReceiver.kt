@@ -16,7 +16,6 @@ class BootReceiver : BroadcastReceiver() {
                         Intent(context, MonitorService::class.java)
                     )
                 } catch (_: Exception) {
-                    // 部分 ROM 限制开机起前台服务：静默放弃，用户打开 App 时会自愈
                 }
             }
         }

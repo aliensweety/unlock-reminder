@@ -1,9 +1,9 @@
 package com.suvye.unlockreminder
 
 import android.Manifest
-import android.app.NotificationManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -11,46 +11,50 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.TypedValue
 import android.view.View
-import android.widget.AdapterView
 import android.widget.ArrayAdapter
-import android.widget.Button
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.Spinner
-import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.textfield.MaterialAutoCompleteTextView
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 
 class MainActivity : AppCompatActivity() {
 
-    private val presets = listOf(
-        "10 秒" to 10L,
-        "30 秒" to 30L,
-        "1 分钟" to 60L,
-        "3 分钟" to 180L,
-        "5 分钟" to 300L,
-        "10 分钟" to 600L,
-        "15 分钟" to 900L,
-        "30 分钟" to 1800L,
-        "自定义…" to -1L
-    )
+    private val presets by lazy {
+        listOf(
+            getString(R.string.preset_10s) to 10L,
+            getString(R.string.preset_30s) to 30L,
+            getString(R.string.preset_1m) to 60L,
+            getString(R.string.preset_3m) to 180L,
+            getString(R.string.preset_5m) to 300L,
+            getString(R.string.preset_10m) to 600L,
+            getString(R.string.preset_15m) to 900L,
+            getString(R.string.preset_30m) to 1800L,
+            getString(R.string.preset_custom) to -1L
+        )
+    }
 
-    private lateinit var statusText: TextView
+    private lateinit var statusCard: MaterialCardView
+    private lateinit var statusDot: View
+    private lateinit var statusText: android.widget.TextView
     private lateinit var switchMonitor: MaterialSwitch
-    private lateinit var spinnerInterval: Spinner
-    private lateinit var customRow: LinearLayout
-    private lateinit var editCustom: EditText
-    private lateinit var btnPermNotif: Button
-    private lateinit var btnPermUsage: Button
-    private lateinit var btnPermOverlay: Button
-    private lateinit var btnPermBattery: Button
-    private lateinit var btnPermFsi: Button
+    private lateinit var intervalDropdown: MaterialAutoCompleteTextView
+    private lateinit var customRow: TextInputLayout
+    private lateinit var editCustom: TextInputEditText
+    private lateinit var btnPermNotif: MaterialButton
+    private lateinit var btnPermUsage: MaterialButton
+    private lateinit var btnPermOverlay: MaterialButton
+    private lateinit var btnPermBattery: MaterialButton
 
     private val handler = Handler(Looper.getMainLooper())
     private var suppressSwitch = false
+    private var suppressInterval = false
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -63,61 +67,61 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        statusCard = findViewById(R.id.statusCard)
+        statusDot = findViewById(R.id.statusDot)
         statusText = findViewById(R.id.statusText)
         switchMonitor = findViewById(R.id.switchMonitor)
-        spinnerInterval = findViewById(R.id.spinnerInterval)
+        intervalDropdown = findViewById(R.id.intervalDropdown)
         customRow = findViewById(R.id.customRow)
         editCustom = findViewById(R.id.editCustom)
         btnPermNotif = findViewById(R.id.btnPermNotif)
         btnPermUsage = findViewById(R.id.btnPermUsage)
         btnPermOverlay = findViewById(R.id.btnPermOverlay)
         btnPermBattery = findViewById(R.id.btnPermBattery)
-        btnPermFsi = findViewById(R.id.btnPermFsi)
 
-        spinnerInterval.adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_spinner_item,
-            presets.map { it.first }
-        ).also {
-            it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        }
-        spinnerInterval.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val seconds = presets[position].second
-                if (seconds > 0) {
-                    customRow.visibility = View.GONE
-                    Prefs.setIntervalSeconds(this@MainActivity, seconds)
-                } else {
-                    customRow.visibility = View.VISIBLE
-                    if (editCustom.text.isNullOrBlank()) {
-                        editCustom.setText(Prefs.intervalSeconds(this@MainActivity).toString())
-                    }
+        val labels = presets.map { it.first }
+        intervalDropdown.setAdapter(
+            ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, labels)
+        )
+        intervalDropdown.keyListener = null
+        intervalDropdown.setOnClickListener { intervalDropdown.showDropDown() }
+        intervalDropdown.setOnItemClickListener { _, _, position, _ ->
+            if (suppressInterval) return@setOnItemClickListener
+            val seconds = presets[position].second
+            if (seconds > 0) {
+                customRow.visibility = View.GONE
+                customRow.error = null
+                Prefs.setIntervalSeconds(this, seconds)
+            } else {
+                customRow.visibility = View.VISIBLE
+                if (editCustom.text.isNullOrBlank()) {
+                    editCustom.setText(Prefs.intervalSeconds(this).toString())
                 }
             }
-
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
         switchMonitor.setOnCheckedChangeListener { _, checked ->
             if (suppressSwitch) return@setOnCheckedChangeListener
             if (checked) {
+                applyCustom()
+                Prefs.setRunning(this, true)
                 ContextCompat.startForegroundService(this, Intent(this, MonitorService::class.java))
-                Toast.makeText(this, "监控已开启，锁屏再解锁即开始倒计时", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, R.string.toast_monitor_on, Toast.LENGTH_SHORT).show()
             } else {
-                startService(
-                    Intent(this, MonitorService::class.java)
-                        .setAction(MonitorService.ACTION_STOP_MONITOR)
-                )
-                Toast.makeText(this, "监控已关闭", Toast.LENGTH_SHORT).show()
+                Prefs.setRunning(this, false)
+                Prefs.clearRound(this)
+                stopService(Intent(this, MonitorService::class.java))
+                Toast.makeText(this, R.string.toast_monitor_off, Toast.LENGTH_SHORT).show()
             }
         }
 
-        findViewById<Button>(R.id.btnTest).setOnClickListener {
+        findViewById<MaterialButton>(R.id.btnTest).setOnClickListener {
             if (!Prefs.isRunning(this)) {
-                Toast.makeText(this, "请先打开上方开关", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, R.string.toast_need_switch, Toast.LENGTH_SHORT).show()
             } else {
                 applyCustom()
-                startService(
+                ContextCompat.startForegroundService(
+                    this,
                     Intent(this, MonitorService::class.java)
                         .setAction(MonitorService.ACTION_START_ROUND)
                 )
@@ -172,32 +176,23 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        // Android 14 起全屏意图默认不授予，入口放进应用通知设置页
-        btnPermFsi.setOnClickListener {
-            try {
-                startActivity(
-                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                        .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-                )
-            } catch (_: Exception) {
-                openAppDetails()
-            }
-        }
     }
 
     override fun onResume() {
         super.onResume()
-        // 服务健康兜底：开关应开着但服务被杀（START_STICKY 尚未拉起）时立即重建
         if (Prefs.isRunning(this)) {
-            ContextCompat.startForegroundService(this, Intent(this, MonitorService::class.java))
+            try {
+                ContextCompat.startForegroundService(this, Intent(this, MonitorService::class.java))
+            } catch (_: Exception) {
+            }
         }
         refreshAll()
         handler.post(ticker)
     }
 
     override fun onPause() {
-        applyCustom()
         handler.removeCallbacks(ticker)
+        applyCustom()
         super.onPause()
     }
 
@@ -218,64 +213,106 @@ class MainActivity : AppCompatActivity() {
     private fun refreshInterval() {
         val current = Prefs.intervalSeconds(this)
         val position = presets.indexOfFirst { it.second == current }
+        suppressInterval = true
         if (position >= 0) {
-            if (spinnerInterval.selectedItemPosition != position) {
-                spinnerInterval.setSelection(position, false)
-            }
+            intervalDropdown.setText(presets[position].first, false)
             customRow.visibility = View.GONE
+            customRow.error = null
         } else {
-            val customPosition = presets.size - 1
-            if (spinnerInterval.selectedItemPosition != customPosition) {
-                spinnerInterval.setSelection(customPosition, false)
-            }
+            intervalDropdown.setText(presets.last().first, false)
             customRow.visibility = View.VISIBLE
             if (editCustom.text.isNullOrBlank()) editCustom.setText(current.toString())
         }
+        suppressInterval = false
     }
 
     private fun refreshStatus() {
         val running = Prefs.isRunning(this)
         val roundStart = Prefs.roundStart(this)
-        statusText.text = when {
-            running && roundStart > 0 -> {
-                val intervalMs = Prefs.intervalSeconds(this) * 1000
-                val remaining = intervalMs - (System.currentTimeMillis() - roundStart)
-                if (remaining > 0) "倒计时中 · 剩余 ${remaining / 1000 + 1} 秒" else "到点提醒中…"
-            }
-            running -> "监控中 · 等待下次解锁"
-            else -> "已停止 · 打开上方开关开始使用"
+        val fireAt = Prefs.fireAt(this)
+        val countdownActive = running && roundStart > 0
+        val remaining = if (countdownActive) {
+            val end = if (fireAt > 0L) fireAt else roundStart + Prefs.intervalSeconds(this) * 1000
+            end - System.currentTimeMillis()
+        } else {
+            0L
         }
+        statusText.text = when {
+            countdownActive && remaining > 0 -> getString(R.string.status_countdown, remaining / 1000 + 1)
+            countdownActive -> getString(R.string.status_firing)
+            running -> getString(R.string.status_waiting)
+            else -> getString(R.string.status_stopped)
+        }
+
+        val containerAttr: Int
+        val onContainerAttr: Int
+        when {
+            countdownActive && remaining > 0 -> {
+                containerAttr = R.color.md_tertiary_container
+                onContainerAttr = R.color.md_on_tertiary_container
+            }
+            running -> {
+                containerAttr = R.color.md_primary_container
+                onContainerAttr = R.color.md_on_primary_container
+            }
+            else -> {
+                containerAttr = R.color.md_surface_container_high
+                onContainerAttr = R.color.md_on_surface_variant
+            }
+        }
+        val container = colorAttr(containerAttr)
+        val onContainer = colorAttr(onContainerAttr)
+        statusCard.setCardBackgroundColor(container)
+        statusText.setTextColor(onContainer)
+        statusDot.backgroundTintList = ColorStateList.valueOf(onContainer)
     }
 
     private fun refreshPerms() {
-        btnPermNotif.text = mark(notifGranted(), "① 通知权限")
-        btnPermUsage.text = mark(UsageStatsHelper.hasUsageAccess(this), "② 使用情况访问")
-        btnPermOverlay.text = mark(Settings.canDrawOverlays(this), "③ 悬浮窗权限")
+        bindPerm(btnPermNotif, getString(R.string.perm_notif), notifGranted())
+        bindPerm(btnPermUsage, getString(R.string.perm_usage), UsageStatsHelper.hasUsageAccess(this))
+        bindPerm(btnPermOverlay, getString(R.string.perm_overlay), Settings.canDrawOverlays(this))
         val pm = getSystemService(PowerManager::class.java)
-        btnPermBattery.text =
-            mark(pm?.isIgnoringBatteryOptimizations(packageName) == true, "④ 电池优化白名单")
-        val fsiVisible = Build.VERSION.SDK_INT >= 34
-        btnPermFsi.visibility = if (fsiVisible) View.VISIBLE else View.GONE
-        if (fsiVisible) {
-            val nm = getSystemService(NotificationManager::class.java)
-            btnPermFsi.text = mark(nm?.canUseFullScreenIntent() == true, "⑤ 全屏弹出（全屏意图）")
-        }
+        val battery = pm?.isIgnoringBatteryOptimizations(packageName) == true
+        bindPerm(btnPermBattery, getString(R.string.perm_battery), battery)
     }
 
-    private fun mark(ok: Boolean, label: String): String =
-        if (ok) "$label：✓ 已允许" else "$label：✗ 未允许（点按开启）"
+    private fun bindPerm(button: MaterialButton, name: String, granted: Boolean) {
+        val mark = getString(if (granted) R.string.perm_granted else R.string.perm_denied)
+        button.text = "$name  $mark"
+        button.setBackgroundColor(
+            colorAttr(if (granted) R.color.md_secondary_container else R.color.md_surface_container_high)
+        )
+        button.setTextColor(
+            colorAttr(if (granted) R.color.md_on_secondary_container else R.color.md_on_surface)
+        )
+        button.iconTint = ColorStateList.valueOf(
+            colorAttr(if (granted) R.color.md_on_secondary_container else R.color.md_on_surface_variant)
+        )
+    }
 
     private fun applyCustom() {
+        if (customRow.visibility != View.VISIBLE) return
         val text = editCustom.text?.toString()?.trim().orEmpty()
         if (text.isEmpty()) return
-        val value = text.toLongOrNull() ?: return
+        val value = text.toLongOrNull()
+        if (value == null) return
         if (value < Prefs.MIN_INTERVAL_SECONDS || value > Prefs.MAX_INTERVAL_SECONDS) {
-            Toast.makeText(this, "间隔范围 ${Prefs.MIN_INTERVAL_SECONDS}–${Prefs.MAX_INTERVAL_SECONDS} 秒", Toast.LENGTH_SHORT).show()
+            customRow.error = getString(
+                R.string.toast_interval_range,
+                Prefs.MIN_INTERVAL_SECONDS,
+                Prefs.MAX_INTERVAL_SECONDS
+            )
+            Toast.makeText(
+                this,
+                getString(R.string.toast_interval_range, Prefs.MIN_INTERVAL_SECONDS, Prefs.MAX_INTERVAL_SECONDS),
+                Toast.LENGTH_SHORT
+            ).show()
             return
         }
+        customRow.error = null
         if (value != Prefs.intervalSeconds(this)) {
             Prefs.setIntervalSeconds(this, value)
-            Toast.makeText(this, "间隔已设为 $value 秒", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getString(R.string.toast_interval_set, value), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -289,4 +326,6 @@ class MainActivity : AppCompatActivity() {
             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
         )
     }
+
+    private fun colorAttr(colorRes: Int): Int = getColor(colorRes)
 }
