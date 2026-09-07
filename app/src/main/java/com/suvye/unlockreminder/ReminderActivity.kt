@@ -16,7 +16,7 @@ class ReminderActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_reminder)
+        setContentView(R.layout.view_reminder)
 
         val elapsed = intent.getLongExtra(EXTRA_ELAPSED, 0L)
         val usage = intent.getStringArrayListExtra(EXTRA_USAGE) ?: arrayListOf()

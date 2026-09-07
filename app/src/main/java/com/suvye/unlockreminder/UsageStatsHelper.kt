@@ -4,6 +4,7 @@ import android.app.AppOpsManager
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
+import android.content.Intent
 import android.os.Process
 
 object UsageStatsHelper {
@@ -18,44 +19,49 @@ object UsageStatsHelper {
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
-    /** 聚合 [from, to] 内各应用前台时长，返回 "应用名 · 时长" 列表，按用时降序。 */
+    /**
+     * 聚合 [from, to] 内各应用前台时长，返回 "应用名 · 时长" 列表，按用时降序。
+     * 回看 30 分钟播种：解锁时已在前台的 App 往往不会再发 RESUMED 事件，
+     * 单指针配对会系统性漏记，因此按包名维护 open map，PAUSED/STOPPED 收尾，
+     * 窗口结束仍未闭合的会话记到窗口末尾（应用被强杀收不到 PAUSED 时由这里兜底）。
+     */
     fun topUsage(ctx: Context, from: Long, to: Long, limit: Int = 8): List<String> {
         if (!hasUsageAccess(ctx)) return emptyList()
         val usm = ctx.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
             ?: return emptyList()
 
+        val lookbackMs = 30 * 60 * 1000L
         val totals = HashMap<String, Long>()
-        var current: String? = null
-        var currentStart = 0L
+        val open = HashMap<String, Long>()
 
-        fun flush(endTime: Long) {
-            val pkg = current ?: return
-            if (endTime > currentStart) {
-                totals[pkg] = (totals[pkg] ?: 0L) + (endTime - currentStart)
-            }
-            current = null
-        }
-
-        val events = usm.queryEvents(from, to)
+        val events = usm.queryEvents(maxOf(0L, from - lookbackMs), to)
         val event = UsageEvents.Event()
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
+            val pkg = event.packageName ?: continue
             when (event.eventType) {
                 UsageEvents.Event.ACTIVITY_RESUMED -> {
-                    flush(event.timeStamp)
-                    current = event.packageName
-                    currentStart = event.timeStamp
+                    val prev = open[pkg]
+                    if (prev == null || event.timeStamp < prev) open[pkg] = event.timeStamp
                 }
-                UsageEvents.Event.ACTIVITY_PAUSED -> {
-                    if (current == event.packageName) flush(event.timeStamp)
+                UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED -> {
+                    settle(totals, open, pkg, event.timeStamp, from, to)
                 }
             }
         }
-        flush(minOf(to, System.currentTimeMillis()))
+        for (pkg in open.keys.toList()) {
+            settle(totals, open, pkg, to, from, to)
+        }
 
+        val homePkg = try {
+            val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+            ctx.packageManager.resolveActivity(homeIntent, 0)?.activityInfo?.packageName
+        } catch (_: Exception) {
+            null
+        }
         val pm = ctx.packageManager
         return totals.entries
-            .filter { it.key != ctx.packageName }
+            .filter { it.key != ctx.packageName && it.key != homePkg }
             .sortedByDescending { it.value }
             .take(limit)
             .map { (pkg, ms) ->
@@ -66,6 +72,21 @@ object UsageStatsHelper {
                 }
                 "$label · ${formatDuration(ms)}"
             }
+    }
+
+    /** 结算一个包的未闭合会话：只统计与提醒窗口 [from, to] 的交集 */
+    private fun settle(
+        totals: HashMap<String, Long>,
+        open: HashMap<String, Long>,
+        pkg: String,
+        endTime: Long,
+        from: Long,
+        to: Long
+    ) {
+        val start = open.remove(pkg) ?: return
+        val s = maxOf(start, from)
+        val e = minOf(endTime, to)
+        if (e > s) totals[pkg] = (totals[pkg] ?: 0L) + (e - s)
     }
 
     fun formatDuration(ms: Long): String {

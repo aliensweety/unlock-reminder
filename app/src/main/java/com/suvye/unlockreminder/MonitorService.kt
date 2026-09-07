@@ -15,7 +15,9 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
+import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -36,6 +38,7 @@ class MonitorService : Service() {
     }
 
     private val handler = Handler(Looper.getMainLooper())
+    private val overlayReminder = OverlayReminder(this)
     private var roundStart = 0L
     private var receiverRegistered = false
 
@@ -75,6 +78,7 @@ class MonitorService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacks(fireRunnable)
+        overlayReminder.close()
         if (receiverRegistered) unregisterReceiver(screenReceiver)
         Prefs.setRunning(this, false)
         super.onDestroy()
@@ -82,17 +86,30 @@ class MonitorService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    /** 浮层「确定 · 再来一轮」回调 */
+    fun onOverlayConfirm() {
+        overlayReminder.close()
+        startRound()
+    }
+
+    /** 浮层「取消 · 停止」/返回键回调 */
+    fun onOverlayCancel() {
+        overlayReminder.close()
+        cancelRound()
+    }
+
     private fun startRound() {
         roundStart = System.currentTimeMillis()
         Prefs.setRoundStart(this, roundStart)
         handler.removeCallbacks(fireRunnable)
         val intervalMs = Prefs.intervalSeconds(this) * 1000L
         handler.postDelayed(fireRunnable, intervalMs)
-        showCountdownNotification(roundStart + intervalMs)
+        showCountdownNotification(intervalMs)
     }
 
     private fun cancelRound() {
         handler.removeCallbacks(fireRunnable)
+        overlayReminder.close()
         roundStart = 0L
         Prefs.clearRound(this)
         val nm = NotificationManagerCompat.from(this)
@@ -108,12 +125,16 @@ class MonitorService : Service() {
 
         NotificationManagerCompat.from(this).cancel(NOTIF_COUNTDOWN)
 
+        // 主路径：悬浮窗全屏浮层（不经过 Activity 启动栈，ROM 不拦）
+        if (Settings.canDrawOverlays(this) && overlayReminder.show(elapsed, usage)) {
+            return
+        }
+
+        // 兜底 1：部分 ROM 允许后台直接起 Activity
         val content = Intent(this, ReminderActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             .putExtra(ReminderActivity.EXTRA_ELAPSED, elapsed)
             .putStringArrayListExtra(ReminderActivity.EXTRA_USAGE, usage)
-
-        // 悬浮窗权限在手时，后台起 Activity 是被豁免的，直接全屏弹出
         if (Settings.canDrawOverlays(this)) {
             try {
                 startActivity(content)
@@ -121,6 +142,7 @@ class MonitorService : Service() {
             }
         }
 
+        // 兜底 2：全屏意图通知（亮屏解锁态是横幅，灭屏/锁屏才真全屏）
         val fullScreenPending = PendingIntent.getActivity(
             this, 0, content,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -137,19 +159,26 @@ class MonitorService : Service() {
         safeNotify(NOTIF_ALARM, notification)
     }
 
-    private fun showCountdownNotification(fireAt: Long) {
+    /** 倒计时通知：RemoteViews + Chronometer（DeskClock 同款），比系统模板的 chronometer extras 更耐 ROM 定制 */
+    private fun showCountdownNotification(intervalMs: Long) {
         val stopIntent = PendingIntent.getService(
             this, 1,
             Intent(this, MonitorService::class.java).setAction(ACTION_CANCEL_ROUND),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val views = RemoteViews(packageName, R.layout.notification_countdown)
+        views.setChronometer(
+            R.id.notifChronometer,
+            SystemClock.elapsedRealtime() + intervalMs,
+            null,
+            true
+        )
+        views.setTextViewText(R.id.notifHint, getString(R.string.countdown_body))
         val notification = NotificationCompat.Builder(this, CH_COUNTDOWN)
             .setSmallIcon(R.drawable.ic_stat_timer)
-            .setContentTitle(getString(R.string.countdown_title))
-            .setContentText(getString(R.string.countdown_body))
-            .setUsesChronometer(true)
-            .setChronometerCountDown(true)
-            .setWhen(fireAt)
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            .setCustomContentView(views)
+            .setCustomBigContentView(views)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(stopIntent)
