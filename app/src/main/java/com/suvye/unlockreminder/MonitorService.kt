@@ -119,7 +119,7 @@ class MonitorService : Service() {
     private fun recoverRoundIfNeeded() {
         val start = Prefs.roundStart(this)
         if (start <= 0L) return
-        val remaining = Prefs.intervalSeconds(this) * 1000L - (System.currentTimeMillis() - start)
+        val remaining = effectiveIntervalSeconds() * 1000L - (System.currentTimeMillis() - start)
         if (remaining > 0L) {
             roundStart = start
             handler.postDelayed(fireRunnable, remaining)
@@ -144,6 +144,7 @@ class MonitorService : Service() {
     private fun startRound(overrideSeconds: Long = 0L) {
         roundStart = System.currentTimeMillis()
         Prefs.setRoundStart(this, roundStart)
+        Prefs.setRoundIntervalOverride(this, if (overrideSeconds > 0) overrideSeconds else 0L)
         handler.removeCallbacks(fireRunnable)
         // 清掉上一轮可能残留的到点通知
         NotificationManagerCompat.from(this).cancel(NOTIF_ALARM)
@@ -153,11 +154,18 @@ class MonitorService : Service() {
         showCountdownNotification(intervalMs)
     }
 
+    /** 本轮实际间隔：诊断测试的临时覆盖优先 */
+    private fun effectiveIntervalSeconds(): Long {
+        val ov = Prefs.roundIntervalOverride(this)
+        return if (ov > 0) ov else Prefs.intervalSeconds(this)
+    }
+
     private fun cancelRound() {
         handler.removeCallbacks(fireRunnable)
         overlayReminder.close()
         roundStart = 0L
         Prefs.clearRound(this)
+        Prefs.setRoundIntervalOverride(this, 0L)
         val nm = NotificationManagerCompat.from(this)
         nm.cancel(NOTIF_COUNTDOWN)
         nm.cancel(NOTIF_ALARM)
@@ -168,6 +176,8 @@ class MonitorService : Service() {
         val elapsed = now - roundStart
         val usage = ArrayList(UsageStatsHelper.topUsage(this, roundStart, now))
         Prefs.clearRound(this)
+        Prefs.setRoundIntervalOverride(this, 0L)
+        Prefs.setLastFireAt(this, now)
 
         NotificationManagerCompat.from(this).cancel(NOTIF_COUNTDOWN)
 
@@ -191,7 +201,8 @@ class MonitorService : Service() {
             .putStringArrayListExtra(ReminderActivity.EXTRA_USAGE, usage)
         try {
             startActivity(content)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            markFire(Prefs.lastFireResult(this) + " · 页面兜底被拦(" + e.javaClass.simpleName + ")")
         }
 
         // ── 兜底2：FSI 高优通知（亮屏解锁态是横幅，灭屏/锁屏才真全屏）────────────

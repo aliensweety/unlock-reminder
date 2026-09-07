@@ -143,12 +143,30 @@ class MainActivity : AppCompatActivity() {
         }
 
         bannerText.setOnClickListener {
-            try {
-                startActivity(
-                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
-                )
-            } catch (_: Exception) {
-                openAppDetails()
+            // 小米优先跳MIUI 权限编辑页（含「后台弹出界面/后台显示悬浮窗」），失败回退系统悬浮窗页
+            var opened = false
+            if (Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true)) {
+                try {
+                    startActivity(
+                        Intent("miui.intent.action.APP_PERM_EDITOR")
+                            .setClassName(
+                                "com.miui.securitycenter",
+                                "com.miui.permcenter.permissions.PermissionsEditorActivity"
+                            )
+                            .putExtra("extra_pkgname", packageName)
+                    )
+                    opened = true
+                } catch (_: Exception) {
+                }
+            }
+            if (!opened) {
+                try {
+                    startActivity(
+                        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                    )
+                } catch (_: Exception) {
+                    openAppDetails()
+                }
             }
         }
 
@@ -266,7 +284,8 @@ class MainActivity : AppCompatActivity() {
         val roundStart = Prefs.roundStart(this)
         statusText.text = when {
             running && roundStart > 0 -> {
-                val intervalMs = Prefs.intervalSeconds(this) * 1000
+                val ov = Prefs.roundIntervalOverride(this)
+                val intervalMs = (if (ov > 0) ov else Prefs.intervalSeconds(this)) * 1000
                 val remaining = intervalMs - (System.currentTimeMillis() - roundStart)
                 if (remaining > 0) "倒计时中 · 剩余 ${remaining / 1000 + 1} 秒" else "到点提醒中…"
             }

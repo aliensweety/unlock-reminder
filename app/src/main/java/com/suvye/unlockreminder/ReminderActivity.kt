@@ -52,9 +52,12 @@ class ReminderActivity : AppCompatActivity() {
 
     private fun bind(intent: Intent) {
         // 走到提醒页就清掉兜底的高优通知，避免处理后残留；
-        // 同时覆盖自诊断记录：能到这一步说明页面兜底链路是通的
+        // 自诊断记录改为追加：保留前面链路（如「浮层失败(Xxx)」）的信息
         NotificationManagerCompat.from(this).cancel(MonitorService.NOTIF_ALARM)
-        Prefs.setLastFire(this, "提醒页已打开 ✓")
+        val cur = Prefs.lastFireResult(this)
+        if (!cur.endsWith("提醒页 ✓")) {
+            Prefs.setLastFire(this, if (cur.isEmpty()) "提醒页已打开 ✓" else "$cur → 提醒页 ✓")
+        }
 
         val elapsed = intent.getLongExtra(EXTRA_ELAPSED, 0L)
         val usage = intent.getStringArrayListExtra(EXTRA_USAGE) ?: arrayListOf()

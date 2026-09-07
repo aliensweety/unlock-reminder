@@ -8,6 +8,8 @@ object Prefs {
     private const val KEY_ROUND_START = "round_start"
     private const val KEY_RUNNING = "service_running"
     private const val KEY_LAST_FIRE = "last_fire_result"
+    private const val KEY_LAST_FIRE_AT = "last_fire_at"
+    private const val KEY_INTERVAL_OVERRIDE = "interval_override"
 
     const val DEFAULT_INTERVAL_SECONDS = 10L
     const val MIN_INTERVAL_SECONDS = 5L
@@ -43,5 +45,18 @@ object Prefs {
 
     fun setLastFire(ctx: Context, value: String) {
         sp(ctx).edit().putString(KEY_LAST_FIRE, value).apply()
+    }
+
+    fun lastFireAt(ctx: Context): Long = sp(ctx).getLong(KEY_LAST_FIRE_AT, 0L)
+
+    fun setLastFireAt(ctx: Context, time: Long) {
+        sp(ctx).edit().putLong(KEY_LAST_FIRE_AT, time).apply()
+    }
+
+    /** 诊断测试用临时间隔（秒），0 表示无覆盖；本轮结束即清 */
+    fun roundIntervalOverride(ctx: Context): Long = sp(ctx).getLong(KEY_INTERVAL_OVERRIDE, 0L)
+
+    fun setRoundIntervalOverride(ctx: Context, seconds: Long) {
+        sp(ctx).edit().putLong(KEY_INTERVAL_OVERRIDE, seconds).apply()
     }
 }

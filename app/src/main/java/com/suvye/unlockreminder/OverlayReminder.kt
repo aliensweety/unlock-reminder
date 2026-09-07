@@ -57,8 +57,17 @@ class OverlayReminder(private val host: MonitorService) {
         )
         return try {
             wm.addView(v, params)
-            view = v
-            Pair(true, "")
+            if (!v.isAttachedToWindow) {
+                // addView 不抛异常但窗口没真正挂上：当作失败记因
+                try {
+                    wm.removeView(v)
+                } catch (_: Exception) {
+                }
+                Pair(false, "NotAttached")
+            } else {
+                view = v
+                Pair(true, "")
+            }
         } catch (e: Exception) {
             Pair(false, e.javaClass.simpleName)
         }
