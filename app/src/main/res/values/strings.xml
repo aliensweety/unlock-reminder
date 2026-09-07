@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">解锁提醒</string>
+    <string name="monitor_hint">监控中 · 解锁后自动开始倒计时</string>
+    <string name="countdown_title">距离下次提醒</string>
+    <string name="countdown_body">点按停止本轮</string>
+    <string name="time_up">时间到</string>
+    <string name="tap_to_view">本轮解锁后使用时长统计</string>
+    <string name="elapsed_prefix">本轮已使用</string>
+    <string name="usage_empty">本轮没有应用使用记录</string>
+    <string name="usage_empty_no_perm">未授予「使用情况访问」权限，无法统计应用使用时长\n请回主界面点②开启后重试</string>
+    <string name="btn_confirm">确定 · 再来一轮</string>
+    <string name="btn_cancel">取消 · 停止</string>
+    <string name="switch_monitor">解锁后自动开始倒计时</string>
+    <string name="interval_label">提醒间隔</string>
+    <string name="custom_hint">输入秒数（5–86400）</string>
+    <string name="seconds_unit">秒</string>
+    <string name="btn_test">立即开始一轮（测试）</string>
+    <string name="perm_section">权限设置</string>
+    <string name="hint_text">使用说明：\n1. 打开开关后，每次解锁手机自动开始倒计时；\n2. 到点会全屏弹出提醒，显示本轮各应用使用时长；\n3. 点「确定」开始下一轮，点「取消」或灭屏即停止；\n4. 默认间隔 10 秒（便于测试），可在上方修改；\n5. 通知栏显示实时倒计时，点它可停止本轮；\n6. 若提醒偶尔不弹出或服务被杀：加入④电池白名单，并在系统设置里允许本应用自启动/后台运行。</string>
+    <string name="ch_monitor">后台运行</string>
+    <string name="ch_countdown">倒计时进行中</string>
+    <string name="ch_alarm">到点提醒</string>
+</resources>
