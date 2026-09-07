@@ -1,25 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">解锁提醒</string>
+    <string name="app_subtitle">屏幕时间感知与防沉迷提醒</string>
+    <string name="app_version">v0.2.0</string>
     <string name="monitor_hint">监控中 · 解锁后自动开始倒计时</string>
     <string name="countdown_title">距离下次提醒</string>
     <string name="countdown_body">点按停止本轮</string>
-    <string name="btn_stop_short">停止本轮</string>
     <string name="time_up">时间到</string>
     <string name="tap_to_view">本轮解锁后使用时长统计</string>
     <string name="elapsed_prefix">本轮已使用</string>
-    <string name="usage_empty">本轮没有应用使用记录</string>
-    <string name="usage_empty_no_perm">未授予「使用情况访问」权限，无法统计应用使用时长\n请回主界面点②开启后重试</string>
+    <string name="usage_empty">本轮没有检测到其他应用使用记录</string>
+    <string name="usage_empty_no_perm">未授予「使用情况访问」权限，无法统计各应用时长\n点下方按钮即可快捷前往系统设置开启</string>
     <string name="btn_confirm">确定 · 再来一轮</string>
     <string name="btn_cancel">取消 · 停止</string>
     <string name="switch_monitor">解锁后自动开始倒计时</string>
+    <string name="switch_monitor_desc">解锁手机即刻计时，息屏自动终止本轮</string>
     <string name="interval_label">提醒间隔</string>
+    <string name="interval_desc">倒计时归零后全屏弹出提醒并统计应用时长</string>
     <string name="custom_hint">输入秒数（5–86400）</string>
     <string name="seconds_unit">秒</string>
+    <string name="custom_helper">范围：5 – 86400 秒（即 5 秒至 24 小时）</string>
     <string name="btn_test">立即开始一轮（测试）</string>
     <string name="perm_section">权限设置</string>
-    <string name="hint_text">使用说明：\n1. 打开开关后，每次解锁手机自动开始倒计时；\n2. 到点会全屏弹出提醒，显示本轮各应用使用时长；\n3. 点「确定」开始下一轮，点「取消」或灭屏即停止；\n4. 默认间隔 10 秒（便于测试），可在上方修改；\n5. 通知栏显示实时倒计时，点它可停止本轮；\n6. 若提醒偶尔不弹出或服务被杀：加入④电池白名单，并在系统设置里允许本应用自启动/后台运行；\n7. 小米/OPPO 等机型如到点只弹横幅：到 系统设置→应用管理→解锁提醒，允许「后台弹出界面/后台显示悬浮窗」。</string>
-    <string name="ch_monitor">后台运行</string>
+    <string name="perm_card_title">核心权限与后台保活</string>
+    <string name="perm_card_subtitle">为确保倒计时准确并能突破后台弹出提醒，建议全部开启：</string>
+    <string name="perm_notif_title">通知权限</string>
+    <string name="perm_notif_desc">显示通知栏实时倒计时与到点通知</string>
+    <string name="perm_usage_title">使用情况访问</string>
+    <string name="perm_usage_desc">统计解锁期间各应用前台使用时长</string>
+    <string name="perm_overlay_title">悬浮窗权限</string>
+    <string name="perm_overlay_desc">到点无视当前应用直接全屏置顶提醒</string>
+    <string name="perm_battery_title">电池优化白名单</string>
+    <string name="perm_battery_desc">防止后台常驻监控服务被系统省电杀掉</string>
+    <string name="perm_status_granted">已开启</string>
+    <string name="perm_status_missing">点按开启</string>
+    <string name="help_card_title">使用指南</string>
+    <string name="hint_text">1. 打开上方总开关，每次解锁手机将自动开始倒计时；\n2. 到点全屏弹出提醒页，并展示本轮各应用使用时长；\n3. 点「确定」立即开启下一轮，点「取消」或息屏则停止本轮；\n4. 默认间隔 10 秒便于测试，日常使用可在上方自由设置；\n5. 通知栏会显示实时倒计时，点按通知亦可直接停止本轮；\n6. 国产定制系统建议在系统设置中允许本应用「自启动」与「后台运行」。</string>
+    <string name="ch_monitor">后台监控常驻</string>
     <string name="ch_countdown">倒计时进行中</string>
-    <string name="ch_alarm">到点提醒</string>
+    <string name="ch_alarm">到点全屏提醒</string>
+    <string name="reminder_usage_header">本轮应用前台使用排行</string>
+    <string name="reminder_tips">确定将开启下一轮，取消或返回键将结束本轮</string>
+    <string name="reminder_grant_usage">前往开启使用情况访问</string>
 </resources>
+

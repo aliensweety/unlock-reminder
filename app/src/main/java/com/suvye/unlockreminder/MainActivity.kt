@@ -1,9 +1,9 @@
 package com.suvye.unlockreminder
 
 import android.Manifest
-import android.app.NotificationManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -22,12 +22,13 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.materialswitch.MaterialSwitch
 
 class MainActivity : AppCompatActivity() {
 
     private val presets = listOf(
-        "10 秒" to 10L,
+        "10 秒（测试推荐）" to 10L,
         "30 秒" to 30L,
         "1 分钟" to 60L,
         "3 分钟" to 180L,
@@ -43,11 +44,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var spinnerInterval: Spinner
     private lateinit var customRow: LinearLayout
     private lateinit var editCustom: EditText
-    private lateinit var btnPermNotif: Button
-    private lateinit var btnPermUsage: Button
-    private lateinit var btnPermOverlay: Button
-    private lateinit var btnPermBattery: Button
-    private lateinit var btnPermFsi: Button
+    private lateinit var btnTest: Button
+    private lateinit var btnPermNotif: MaterialButton
+    private lateinit var btnPermUsage: MaterialButton
+    private lateinit var btnPermOverlay: MaterialButton
+    private lateinit var btnPermBattery: MaterialButton
 
     private val handler = Handler(Looper.getMainLooper())
     private var suppressSwitch = false
@@ -68,11 +69,11 @@ class MainActivity : AppCompatActivity() {
         spinnerInterval = findViewById(R.id.spinnerInterval)
         customRow = findViewById(R.id.customRow)
         editCustom = findViewById(R.id.editCustom)
+        btnTest = findViewById(R.id.btnTest)
         btnPermNotif = findViewById(R.id.btnPermNotif)
         btnPermUsage = findViewById(R.id.btnPermUsage)
         btnPermOverlay = findViewById(R.id.btnPermOverlay)
         btnPermBattery = findViewById(R.id.btnPermBattery)
-        btnPermFsi = findViewById(R.id.btnPermFsi)
 
         spinnerInterval.adapter = ArrayAdapter(
             this,
@@ -107,9 +108,10 @@ class MainActivity : AppCompatActivity() {
                 stopService(Intent(this, MonitorService::class.java))
                 Toast.makeText(this, "监控已关闭", Toast.LENGTH_SHORT).show()
             }
+            refreshStatus()
         }
 
-        findViewById<Button>(R.id.btnTest).setOnClickListener {
+        btnTest.setOnClickListener {
             if (!Prefs.isRunning(this)) {
                 Toast.makeText(this, "请先打开上方开关", Toast.LENGTH_SHORT).show()
             } else {
@@ -134,25 +136,45 @@ class MainActivity : AppCompatActivity() {
             ) {
                 requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 100)
             } else {
-                openAppDetails()
+                try {
+                    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                        putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                    }
+                    startActivity(intent)
+                } catch (_: Exception) {
+                    openAppDetails()
+                }
             }
         }
+
         btnPermUsage.setOnClickListener {
             try {
-                startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                startActivity(
+                    Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.parse("package:$packageName"))
+                )
             } catch (_: Exception) {
-                openAppDetails()
+                try {
+                    startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                } catch (_: Exception) {
+                    openAppDetails()
+                }
             }
         }
+
         btnPermOverlay.setOnClickListener {
             try {
                 startActivity(
                     Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
                 )
             } catch (_: Exception) {
-                openAppDetails()
+                try {
+                    startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
+                } catch (_: Exception) {
+                    openAppDetails()
+                }
             }
         }
+
         btnPermBattery.setOnClickListener {
             try {
                 startActivity(
@@ -169,23 +191,12 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        // Android 14 起全屏意图默认不授予，入口放进应用通知设置页
-        btnPermFsi.setOnClickListener {
-            try {
-                startActivity(
-                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                        .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-                )
-            } catch (_: Exception) {
-                openAppDetails()
-            }
-        }
     }
 
     override fun onResume() {
         super.onResume()
-        // 服务健康兜底：开关应开着但服务被杀（START_STICKY 尚未拉起）时立即重建
         if (Prefs.isRunning(this)) {
+            // 保障若系统偶发清理服务，进入主界面时静默拉起保持常驻
             ContextCompat.startForegroundService(this, Intent(this, MonitorService::class.java))
         }
         refreshAll()
@@ -240,27 +251,51 @@ class MainActivity : AppCompatActivity() {
                 if (remaining > 0) "倒计时中 · 剩余 ${remaining / 1000 + 1} 秒" else "到点提醒中…"
             }
             running -> "监控中 · 等待下次解锁"
-            else -> "已停止 · 打开上方开关开始使用"
+            else -> "已停止 · 打开下方开关开始使用"
         }
     }
 
     private fun refreshPerms() {
-        btnPermNotif.text = mark(notifGranted(), "① 通知权限")
-        btnPermUsage.text = mark(UsageStatsHelper.hasUsageAccess(this), "② 使用情况访问")
-        btnPermOverlay.text = mark(Settings.canDrawOverlays(this), "③ 悬浮窗权限")
+        stylePermButton(
+            btnPermNotif,
+            granted = notifGranted(),
+            grantedText = "① 通知权限：已开启",
+            missingText = "① 通知权限：未开启（点按授权）"
+        )
+        stylePermButton(
+            btnPermUsage,
+            granted = UsageStatsHelper.hasUsageAccess(this),
+            grantedText = "② 使用情况访问：已开启",
+            missingText = "② 使用情况访问：未开启（点按授权）"
+        )
+        stylePermButton(
+            btnPermOverlay,
+            granted = Settings.canDrawOverlays(this),
+            grantedText = "③ 悬浮窗权限：已开启",
+            missingText = "③ 悬浮窗权限：未开启（点按授权）"
+        )
         val pm = getSystemService(PowerManager::class.java)
-        btnPermBattery.text =
-            mark(pm?.isIgnoringBatteryOptimizations(packageName) == true, "④ 电池优化白名单")
-        val fsiVisible = Build.VERSION.SDK_INT >= 34
-        btnPermFsi.visibility = if (fsiVisible) View.VISIBLE else View.GONE
-        if (fsiVisible) {
-            val nm = getSystemService(NotificationManager::class.java)
-            btnPermFsi.text = mark(nm?.canUseFullScreenIntent() == true, "⑤ 全屏弹出（全屏意图）")
-        }
+        val batteryGranted = pm?.isIgnoringBatteryOptimizations(packageName) == true
+        stylePermButton(
+            btnPermBattery,
+            granted = batteryGranted,
+            grantedText = "④ 电池优化白名单：已加入",
+            missingText = "④ 电池优化白名单：未加入（点按设置）"
+        )
     }
 
-    private fun mark(ok: Boolean, label: String): String =
-        if (ok) "$label：✓ 已允许" else "$label：✗ 未允许（点按开启）"
+    private fun stylePermButton(btn: MaterialButton, granted: Boolean, grantedText: String, missingText: String) {
+        btn.text = if (granted) grantedText else missingText
+        val iconRes = if (granted) R.drawable.ic_check_circle else R.drawable.ic_warning_circle
+        val colorRes = if (granted) R.color.perm_granted else R.color.perm_missing
+        val color = ContextCompat.getColor(this, colorRes)
+
+        btn.icon = ContextCompat.getDrawable(this, iconRes)
+        btn.iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
+        btn.iconPadding = 20
+        btn.strokeColor = ColorStateList.valueOf(color)
+        btn.setTextColor(color)
+    }
 
     private fun applyCustom() {
         val text = editCustom.text?.toString()?.trim().orEmpty()
@@ -282,8 +317,11 @@ class MainActivity : AppCompatActivity() {
                 PackageManager.PERMISSION_GRANTED)
 
     private fun openAppDetails() {
-        startActivity(
-            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
-        )
+        try {
+            startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))
+            )
+        } catch (_: Exception) {
+        }
     }
 }
