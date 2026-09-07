@@ -32,6 +32,8 @@ class MonitorService : Service() {
         const val ACTION_START_ROUND = "com.suvye.unlockreminder.action.START_ROUND"
         const val ACTION_CANCEL_ROUND = "com.suvye.unlockreminder.action.CANCEL_ROUND"
         const val ACTION_STOP_MONITOR = "com.suvye.unlockreminder.action.STOP_MONITOR"
+        const val ACTION_FIRE_NOW = "com.suvye.unlockreminder.action.FIRE_NOW"
+        const val ACTION_WATCHDOG = "com.suvye.unlockreminder.action.WATCHDOG"
 
         /** 诊断用：临时覆盖本轮间隔（秒），>0 时生效 */
         const val EXTRA_INTERVAL_OVERRIDE = "interval_override"
@@ -48,8 +50,17 @@ class MonitorService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private val overlayReminder = OverlayReminder(this)
     private var roundStart = 0L
+    private var scheduledRoundId = 0L
     private var receiverRegistered = false
     private var userStop = false
+
+    /** 心跳：看门狗闹钟据此判断服务是否被冻/被杀 */
+    private val heartbeatRunnable = object : Runnable {
+        override fun run() {
+            Prefs.setLastHeartbeat(this@MonitorService, System.currentTimeMillis())
+            handler.postDelayed(this, 60_000L)
+        }
+    }
 
     private val fireRunnable = Runnable { fire() }
 
@@ -79,6 +90,9 @@ class MonitorService : Service() {
             startForeground(NOTIF_MONITOR, monitorNotif)
         }
         Prefs.setRunning(this, true)
+        Prefs.setLastHeartbeat(this, System.currentTimeMillis())
+        handler.postDelayed(heartbeatRunnable, 60_000L)
+        scheduleWatchdog()
         recoverRoundIfNeeded()
     }
 
@@ -86,6 +100,11 @@ class MonitorService : Service() {
         when (intent?.action) {
             ACTION_START_ROUND -> startRound(intent.getLongExtra(EXTRA_INTERVAL_OVERRIDE, 0L))
             ACTION_CANCEL_ROUND -> cancelRound()
+            ACTION_FIRE_NOW -> {
+                // 精确闹钟叫醒：服务侧做去重，闹钟与 Handler 谁先到都只 fire 一次
+                handler.removeCallbacks(fireRunnable)
+                fire()
+            }
             ACTION_STOP_MONITOR -> {
                 userStop = true
                 cancelRound()
@@ -99,6 +118,7 @@ class MonitorService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacks(fireRunnable)
+        handler.removeCallbacks(heartbeatRunnable)
         overlayReminder.close()
         // 通知无论如何都撤掉；本轮状态只在用户主动关闭时清，
         // 系统回收服务（会走 onDestroy 再 sticky 重启）时保留，交给 recoverRoundIfNeeded 恢复
@@ -107,6 +127,7 @@ class MonitorService : Service() {
         nm.cancel(NOTIF_ALARM)
         if (receiverRegistered) unregisterReceiver(screenReceiver)
         if (userStop) {
+            cancelWatchdog()
             Prefs.setRunning(this, false)
             Prefs.clearRound(this)
         }
@@ -122,6 +143,7 @@ class MonitorService : Service() {
         val remaining = effectiveIntervalSeconds() * 1000L - (System.currentTimeMillis() - start)
         if (remaining > 0L) {
             roundStart = start
+            scheduledRoundId = start
             handler.postDelayed(fireRunnable, remaining)
             showCountdownNotification(remaining)
         } else {
@@ -143,6 +165,7 @@ class MonitorService : Service() {
 
     private fun startRound(overrideSeconds: Long = 0L) {
         roundStart = System.currentTimeMillis()
+        scheduledRoundId = roundStart
         Prefs.setRoundStart(this, roundStart)
         Prefs.setRoundIntervalOverride(this, if (overrideSeconds > 0) overrideSeconds else 0L)
         handler.removeCallbacks(fireRunnable)
@@ -151,6 +174,16 @@ class MonitorService : Service() {
         val seconds = if (overrideSeconds > 0) overrideSeconds else Prefs.intervalSeconds(this)
         val intervalMs = seconds * 1000L
         handler.postDelayed(fireRunnable, intervalMs)
+        // 宏软件同款双保险：进程被冻/被杀时由系统闹钟叫醒到点
+        val am = getSystemService(AlarmManager::class.java)
+        if (am != null) {
+            val fireAt = roundStart + intervalMs
+            if (Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireAt, fireAlarmPending())
+            } else {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireAt, fireAlarmPending())
+            }
+        }
         showCountdownNotification(intervalMs)
     }
 
@@ -164,14 +197,45 @@ class MonitorService : Service() {
         handler.removeCallbacks(fireRunnable)
         overlayReminder.close()
         roundStart = 0L
+        scheduledRoundId = 0L
         Prefs.clearRound(this)
         Prefs.setRoundIntervalOverride(this, 0L)
+        getSystemService(AlarmManager::class.java)?.cancel(fireAlarmPending())
         val nm = NotificationManagerCompat.from(this)
         nm.cancel(NOTIF_COUNTDOWN)
         nm.cancel(NOTIF_ALARM)
     }
 
+    private fun fireAlarmPending(): PendingIntent = PendingIntent.getBroadcast(
+        this, 10,
+        Intent(this, AlarmReceiver::class.java).setAction(ACTION_FIRE_NOW),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+
+    private fun watchdogPending(): PendingIntent = PendingIntent.getBroadcast(
+        this, 11,
+        Intent(this, AlarmReceiver::class.java).setAction(ACTION_WATCHDOG),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+
+    private fun scheduleWatchdog() {
+        val am = getSystemService(AlarmManager::class.java) ?: return
+        am.setInexactRepeating(
+            AlarmManager.RTC_WAKEUP,
+            System.currentTimeMillis() + 5 * 60_000L,
+            15 * 60_000L,
+            watchdogPending()
+        )
+    }
+
+    private fun cancelWatchdog() {
+        getSystemService(AlarmManager::class.java)?.cancel(watchdogPending())
+    }
+
     private fun fire() {
+        // 去重：Handler 与精确闹钟谁先到都只 fire 一次
+        if (roundStart == 0L || roundStart != scheduledRoundId) return
+        scheduledRoundId = 0L
         val now = System.currentTimeMillis()
         val elapsed = now - roundStart
         val usage = ArrayList(UsageStatsHelper.topUsage(this, roundStart, now))

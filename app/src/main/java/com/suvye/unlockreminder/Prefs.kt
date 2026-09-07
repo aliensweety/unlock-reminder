@@ -10,6 +10,7 @@ object Prefs {
     private const val KEY_LAST_FIRE = "last_fire_result"
     private const val KEY_LAST_FIRE_AT = "last_fire_at"
     private const val KEY_INTERVAL_OVERRIDE = "interval_override"
+    private const val KEY_HEARTBEAT = "service_heartbeat"
 
     const val DEFAULT_INTERVAL_SECONDS = 10L
     const val MIN_INTERVAL_SECONDS = 5L
@@ -58,5 +59,12 @@ object Prefs {
 
     fun setRoundIntervalOverride(ctx: Context, seconds: Long) {
         sp(ctx).edit().putLong(KEY_INTERVAL_OVERRIDE, seconds).apply()
+    }
+
+    /** 监控服务心跳（看门狗用它判断服务是否被冻/被杀） */
+    fun lastHeartbeat(ctx: Context): Long = sp(ctx).getLong(KEY_HEARTBEAT, 0L)
+
+    fun setLastHeartbeat(ctx: Context, time: Long) {
+        sp(ctx).edit().putLong(KEY_HEARTBEAT, time).apply()
     }
 }

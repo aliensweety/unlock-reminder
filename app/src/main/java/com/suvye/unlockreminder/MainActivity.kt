@@ -142,32 +142,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        bannerText.setOnClickListener {
-            // 小米优先跳MIUI 权限编辑页（含「后台弹出界面/后台显示悬浮窗」），失败回退系统悬浮窗页
-            var opened = false
-            if (Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true)) {
-                try {
-                    startActivity(
-                        Intent("miui.intent.action.APP_PERM_EDITOR")
-                            .setClassName(
-                                "com.miui.securitycenter",
-                                "com.miui.permcenter.permissions.PermissionsEditorActivity"
-                            )
-                            .putExtra("extra_pkgname", packageName)
-                    )
-                    opened = true
-                } catch (_: Exception) {
-                }
-            }
-            if (!opened) {
-                try {
-                    startActivity(
-                        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
-                    )
-                } catch (_: Exception) {
-                    openAppDetails()
-                }
-            }
+        bannerText.setOnClickListener { startActivity(Intent(this, WizardActivity::class.java)) }
+
+        findViewById<Button>(R.id.btnWizard).setOnClickListener {
+            startActivity(Intent(this, WizardActivity::class.java))
         }
 
         editCustom.setOnEditorActionListener { _, _, _ ->

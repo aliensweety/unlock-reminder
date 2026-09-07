@@ -22,6 +22,16 @@
     <string name="fix_overlay">开启悬浮窗弹窗</string>
     <string name="perm_section">权限设置</string>
     <string name="hint_text">使用说明：\n1. 打开开关后，每次解锁手机自动开始倒计时；\n2. 到点会全屏弹出提醒，显示本轮各应用使用时长；\n3. 点「确定」开始下一轮，点「取消」或灭屏即停止；\n4. 默认间隔 10 秒（便于测试），可在上方修改；\n5. 通知栏显示实时倒计时，点它可停止本轮；\n6. 若提醒偶尔不弹出或服务被杀：加入④电池白名单，并在系统设置里允许本应用自启动/后台运行；\n7. 小米/OPPO 等机型如到点只弹横幅：到 系统设置→应用管理→解锁提醒，允许「后台弹出界面/后台显示悬浮窗」。</string>
+    <string name="btn_wizard">打开保活向导（分品牌逐步引导）</string>
+    <string name="wizard_title">保活向导</string>
+    <string name="wizard_go">去开启</string>
+    <string name="wizard_go_oem">自启动/后台</string>
+    <string name="wizard_step_notif">① 通知权限（到点横幅与提醒通知）</string>
+    <string name="wizard_step_usage">② 使用情况访问（统计各应用时长）</string>
+    <string name="wizard_step_overlay">③ 悬浮窗（全局弹窗必需）</string>
+    <string name="wizard_step_battery">④ 电池优化白名单（防服务被杀）</string>
+    <string name="wizard_step_oem">⑤ 厂商自启动与后台弹出（ColorOS/MIUI 等必须）</string>
+    <string name="wizard_footer">说明：⑤ 无公开检测接口，开启后请回到本页用「5 秒延迟测试」验证：按下后立刻切到微信等其它应用，能盖住即为全局弹窗成功。OPPO 路径参考：设置→应用→应用管理→解锁提醒→权限管理→允许「后台弹出界面」；自启动在 应用信息→允许自启。侧载安装（Android 13+）若开关是灰的，请到 应用信息→右上角菜单→「允许受限设置」。</string>
     <string name="ch_monitor">后台运行</string>
     <string name="ch_countdown">倒计时进行中</string>
     <string name="ch_alarm">到点提醒</string>
