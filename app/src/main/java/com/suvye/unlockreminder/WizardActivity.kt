@@ -100,8 +100,8 @@ class WizardActivity : AppCompatActivity() {
 
     private fun refreshStatuses() {
         val notifOk = Build.VERSION.SDK_INT < 33 ||
-            ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
-            == PackageManager.PERMISSION_GRANTED
+            (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED)
         statusNotif.text = mark(notifOk)
 
         val appOps = getSystemService(AppOpsManager::class.java)
