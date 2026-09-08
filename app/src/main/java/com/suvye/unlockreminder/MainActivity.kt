@@ -50,6 +50,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnPermOverlay: Button
     private lateinit var btnPermBattery: Button
     private lateinit var btnPermFsi: Button
+    private lateinit var btnPermAlarm: Button
 
     private val handler = Handler(Looper.getMainLooper())
     private var suppressSwitch = false
@@ -77,6 +78,7 @@ class MainActivity : AppCompatActivity() {
         btnPermOverlay = findViewById(R.id.btnPermOverlay)
         btnPermBattery = findViewById(R.id.btnPermBattery)
         btnPermFsi = findViewById(R.id.btnPermFsi)
+        btnPermAlarm = findViewById(R.id.btnPermAlarm)
 
         spinnerInterval.adapter = ArrayAdapter(
             this,
@@ -207,6 +209,17 @@ class MainActivity : AppCompatActivity() {
                 openAppDetails()
             }
         }
+        // 精确闹钟：到点准时 + 能把被 ROM 冻结的后台进程叫醒（宏软件同款关键权限）
+        btnPermAlarm.setOnClickListener {
+            try {
+                startActivity(
+                    Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+                        Uri.parse("package:$packageName"))
+                )
+            } catch (_: Exception) {
+                openAppDetails()
+            }
+        }
     }
 
     override fun onResume() {
@@ -290,6 +303,12 @@ class MainActivity : AppCompatActivity() {
         if (fsiVisible) {
             val nm = getSystemService(NotificationManager::class.java)
             btnPermFsi.text = mark(nm?.canUseFullScreenIntent() == true, "⑤ 全屏弹出（全屏意图）")
+        }
+        val alarmVisible = Build.VERSION.SDK_INT >= 31
+        btnPermAlarm.visibility = if (alarmVisible) View.VISIBLE else View.GONE
+        if (alarmVisible) {
+            val am = getSystemService(android.app.AlarmManager::class.java)
+            btnPermAlarm.text = mark(am?.canScheduleExactAlarms() == true, "⑥ 精确闹钟（穿透后台冻结）")
         }
     }
 

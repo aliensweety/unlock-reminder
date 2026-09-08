@@ -22,6 +22,7 @@ class WizardActivity : AppCompatActivity() {
     private lateinit var statusUsage: TextView
     private lateinit var statusOverlay: TextView
     private lateinit var statusBattery: TextView
+    private lateinit var statusAlarm: TextView
     private lateinit var statusOem: TextView
     private lateinit var goOem: Button
 
@@ -34,6 +35,7 @@ class WizardActivity : AppCompatActivity() {
         statusUsage = findViewById(R.id.statusUsage)
         statusOverlay = findViewById(R.id.statusOverlay)
         statusBattery = findViewById(R.id.statusBattery)
+        statusAlarm = findViewById(R.id.statusAlarm)
         statusOem = findViewById(R.id.statusOem)
         goOem = findViewById(R.id.goOem)
 
@@ -86,6 +88,15 @@ class WizardActivity : AppCompatActivity() {
                 }
             }
         }
+        findViewById<Button>(R.id.goAlarm).setOnClickListener {
+            try {
+                startActivity(
+                    Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName"))
+                )
+            } catch (_: Exception) {
+                OemHelper.openAppDetails(this)
+            }
+        }
     }
 
     override fun onResume() {
@@ -118,6 +129,16 @@ class WizardActivity : AppCompatActivity() {
 
         val pm = getSystemService(PowerManager::class.java)
         statusBattery.text = mark(pm?.isIgnoringBatteryOptimizations(packageName) == true)
+
+        val alarmVisible = Build.VERSION.SDK_INT >= 31
+        findViewById<Button>(R.id.goAlarm).visibility =
+            if (alarmVisible) Button.VISIBLE else Button.GONE
+        if (alarmVisible) {
+            val am = getSystemService(android.app.AlarmManager::class.java)
+            statusAlarm.text = mark(am?.canScheduleExactAlarms() == true)
+        } else {
+            statusAlarm.text = "（此系统版本无需）"
+        }
 
         // 厂商自启动/后台弹出无公开检测 API：只能提示用户去确认
         statusOem.text = "□ 请人工确认（系统无检测接口）"

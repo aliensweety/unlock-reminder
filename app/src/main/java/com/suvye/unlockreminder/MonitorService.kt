@@ -56,6 +56,7 @@ class MonitorService : Service() {
     private var userStop = false
     private var pendingElapsed = 0L
     private var pendingUsage: List<String> = emptyList()
+    private var pendingLateTag = ""
 
     /** 心跳：看门狗闹钟据此判断服务是否被冻/被杀 */
     private val heartbeatRunnable = object : Runnable {
@@ -246,6 +247,10 @@ class MonitorService : Service() {
         if (roundStart == 0L || roundStart != scheduledRoundId) return
         scheduledRoundId = 0L
         val now = System.currentTimeMillis()
+        // 迟到检测：到点回调比计划晚 15 秒以上 = 进程被 ROM 冻结过（真机诊断关键信号）
+        val lateMs = now - (roundStart + effectiveIntervalSeconds() * 1000L)
+        pendingLateTag =
+            if (lateMs > 15_000L) " · 迟到${lateMs / 1000L}秒（后台被冻结过）" else ""
         val elapsed = now - roundStart
         val usage = ArrayList(UsageStatsHelper.topUsage(this, roundStart, now))
         Prefs.clearRound(this)
@@ -261,10 +266,10 @@ class MonitorService : Service() {
         //    OverlayReminder 500ms 后异步验证，成败经 onOverlayShown/onOverlayFailed 回调 ──
         val overlayGranted = Settings.canDrawOverlays(this)
         if (overlayGranted && overlayReminder.show(elapsed, usage)) {
-            markFire("浮层已挂载，验证中…")
+            markFire("浮层已挂载，验证中…" + pendingLateTag)
             return
         }
-        markFire(if (overlayGranted) "浮层添加失败，走兜底" else "仅通知（未开悬浮窗）")
+        markFire(if (overlayGranted) "浮层添加失败，走兜底" else "仅通知（未开悬浮窗）" + pendingLateTag)
         runFallback()
     }
 
@@ -317,13 +322,13 @@ class MonitorService : Service() {
     /** 浮层异步验证通过：真·全局浮层 */
     fun onOverlayShown() {
         if (!Prefs.isRunning(this)) return
-        markFire("全局浮层 ✓")
+        markFire("全局浮层 ✓" + pendingLateTag)
     }
 
     /** 浮层异步验证失败（含不可聚焦重试后）：走兜底链 */
     fun onOverlayFailed(reason: String) {
         if (!Prefs.isRunning(this)) return
-        markFire("浮层失败($reason)，走兜底")
+        markFire("浮层失败($reason)，走兜底" + pendingLateTag)
         runFallback()
     }
 
