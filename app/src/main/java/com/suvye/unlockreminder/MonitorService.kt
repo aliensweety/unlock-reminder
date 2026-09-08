@@ -54,6 +54,8 @@ class MonitorService : Service() {
     private var scheduledRoundId = 0L
     private var receiverRegistered = false
     private var userStop = false
+    private var pendingElapsed = 0L
+    private var pendingUsage: List<String> = emptyList()
 
     /** 心跳：看门狗闹钟据此判断服务是否被冻/被杀 */
     private val heartbeatRunnable = object : Runnable {
@@ -252,31 +254,33 @@ class MonitorService : Service() {
 
         NotificationManagerCompat.from(this).cancel(NOTIF_COUNTDOWN)
 
-        // ── 主路径：悬浮窗全屏浮层（不经过 Activity 启动栈，ROM 不拦）──────────
-        val overlayGranted = Settings.canDrawOverlays(this)
-        if (overlayGranted) {
-            val (ok, error) = overlayReminder.show(elapsed, usage)
-            if (ok) {
-                markFire("全局浮层 ✓")
-                return
-            }
-            markFire("浮层失败($error)，已走兜底")
-        } else {
-            markFire("仅通知（未开悬浮窗）")
-        }
+        pendingElapsed = elapsed
+        pendingUsage = usage
 
-        // ── 兜底1：直接起页面（有悬浮窗权限时多数 ROM 允许；MIUI 还需「后台弹出界面」）──
+        // ── 主路径：悬浮窗全屏浮层。挂载成功≠显示成功（ColorOS 会静默吞窗），
+        //    OverlayReminder 500ms 后异步验证，成败经 onOverlayShown/onOverlayFailed 回调 ──
+        val overlayGranted = Settings.canDrawOverlays(this)
+        if (overlayGranted && overlayReminder.show(elapsed, usage)) {
+            markFire("浮层已挂载，验证中…")
+            return
+        }
+        markFire(if (overlayGranted) "浮层添加失败，走兜底" else "仅通知（未开悬浮窗）")
+        runFallback()
+    }
+
+    /** 兜底链：直接起页面（多数 ROM 允许，MIUI 需「后台弹出界面」）→ FSI 通知 */
+    private fun runFallback() {
         val content = Intent(this, ReminderActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            .putExtra(ReminderActivity.EXTRA_ELAPSED, elapsed)
-            .putStringArrayListExtra(ReminderActivity.EXTRA_USAGE, usage)
+            .putExtra(ReminderActivity.EXTRA_ELAPSED, pendingElapsed)
+            .putStringArrayListExtra(ReminderActivity.EXTRA_USAGE, ArrayList(pendingUsage))
         try {
             startActivity(content)
         } catch (e: Exception) {
             markFire(Prefs.lastFireResult(this) + " · 页面兜底被拦(" + e.javaClass.simpleName + ")")
         }
 
-        // ── 兜底2：FSI 高优通知（亮屏解锁态是横幅，灭屏/锁屏才真全屏）────────────
+        // FSI 高优通知（亮屏解锁态是横幅，灭屏/锁屏才真全屏）
         val fullScreenPending = PendingIntent.getActivity(
             this, 0, content,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -292,7 +296,7 @@ class MonitorService : Service() {
             .setContentIntent(fullScreenPending)
             .setFullScreenIntent(fullScreenPending, true)
 
-        if (!overlayGranted) {
+        if (!Settings.canDrawOverlays(this)) {
             // 全局弹窗的唯一合法前提就是悬浮窗权限：在到点通知里给一键修复入口
             val fixPending = PendingIntent.getActivity(
                 this, 2,
@@ -308,6 +312,19 @@ class MonitorService : Service() {
         )
         builder.addAction(0, getString(R.string.btn_stop_short), stopPending)
         safeNotify(NOTIF_ALARM, builder.build())
+    }
+
+    /** 浮层异步验证通过：真·全局浮层 */
+    fun onOverlayShown() {
+        if (!Prefs.isRunning(this)) return
+        markFire("全局浮层 ✓")
+    }
+
+    /** 浮层异步验证失败（含不可聚焦重试后）：走兜底链 */
+    fun onOverlayFailed(reason: String) {
+        if (!Prefs.isRunning(this)) return
+        markFire("浮层失败($reason)，走兜底")
+        runFallback()
     }
 
     /** 把到点链路的实际走向记到主界面（自诊断：用户无需 adb 即可反馈卡在哪一步） */
