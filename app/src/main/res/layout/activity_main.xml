@@ -195,11 +195,10 @@
                     android:visibility="gone" />
 
                 <Button
-                    android:id="@+id/btnPermAlarm"
+                    android:id="@+id/btnPermA11y"
                     style="@style/PermButton"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:visibility="gone" />
+                    android:layout_height="wrap_content" />
 
                 <Button
                     android:id="@+id/btnWizard"

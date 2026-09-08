@@ -12,6 +12,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -19,6 +20,10 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.net.Uri
+import android.view.Gravity
+import android.view.View
+import android.view.ContextThemeWrapper
+import android.view.WindowManager
 import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -50,6 +55,7 @@ class MonitorService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
     private val overlayReminder = OverlayReminder(this)
+    private var keepAliveDot: View? = null
     private var roundStart = 0L
     private var scheduledRoundId = 0L
     private var receiverRegistered = false
@@ -107,6 +113,7 @@ class MonitorService : Service() {
         } else {
             startForeground(NOTIF_MONITOR, monitorNotif)
         }
+        addKeepAliveDot()
         Prefs.setRunning(this, true)
         Prefs.setLastHeartbeat(this, System.currentTimeMillis())
         handler.postDelayed(heartbeatRunnable, 60_000L)
@@ -139,6 +146,7 @@ class MonitorService : Service() {
         handler.removeCallbacks(heartbeatRunnable)
         handler.removeCallbacks(countdownUpdater)
         overlayReminder.close()
+        removeKeepAliveDot()
         // 通知无论如何都撤掉；本轮状态只在用户主动关闭时清，
         // 系统回收服务（会走 onDestroy 再 sticky 重启）时保留，交给 recoverRoundIfNeeded 恢复
         val nm = NotificationManagerCompat.from(this)
@@ -199,15 +207,16 @@ class MonitorService : Service() {
         val seconds = if (overrideSeconds > 0) overrideSeconds else Prefs.intervalSeconds(this)
         val intervalMs = seconds * 1000L
         handler.postDelayed(fireRunnable, intervalMs)
-        // 宏软件同款双保险：进程被冻/被杀时由系统闹钟叫醒到点
+        // 宏软件同款双保险：setAlarmClock 被系统视为真实闹钟，ColorOS/MIUI 不做闹钟对齐延迟，
+        // 且无需 SCHEDULE_EXACT_ALARM 权限；进程被速冻时由系统闹钟破冻叫醒到点
         val am = getSystemService(AlarmManager::class.java)
         if (am != null) {
             val fireAt = roundStart + intervalMs
-            if (Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireAt, fireAlarmPending())
-            } else {
-                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireAt, fireAlarmPending())
-            }
+            val showIntent = PendingIntent.getActivity(
+                this, 4, Intent(this, MainActivity::class.java),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            am.setAlarmClock(AlarmManager.AlarmClockInfo(fireAt, showIntent), fireAlarmPending())
         }
         showCountdownNotification(intervalMs)
     }
@@ -258,6 +267,46 @@ class MonitorService : Service() {
 
     private fun cancelWatchdog() {
         getSystemService(AlarmManager::class.java)?.cancel(watchdogPending())
+    }
+
+    /**
+     * 保活小浮标（MacroDroid 浮字的缩小版）：监控期间常驻一颗半透明小圆点。
+     * 挂着「可见窗口」的进程通常不进 ROM 速冻名单——这是防冻结最省事的形态级手段。
+     * 不可触摸、不抢焦点，仅 12dp，位于屏幕左上角。
+     */
+    private fun addKeepAliveDot() {
+        if (keepAliveDot != null) return
+        if (!Settings.canDrawOverlays(this)) return
+        val wm = getSystemService(WindowManager::class.java) ?: return
+        val v = View(this)
+        v.setBackgroundResource(R.drawable.keepalive_dot)
+        val density = resources.displayMetrics.density
+        val params = WindowManager.LayoutParams(
+            (12 * density).toInt(),
+            (12 * density).toInt(),
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        )
+        params.gravity = Gravity.TOP or Gravity.START
+        params.x = (6 * density).toInt()
+        params.y = (6 * density).toInt()
+        try {
+            wm.addView(v, params)
+            keepAliveDot = v
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun removeKeepAliveDot() {
+        val v = keepAliveDot ?: return
+        keepAliveDot = null
+        try {
+            getSystemService(WindowManager::class.java)?.removeView(v)
+        } catch (_: Exception) {
+        }
     }
 
     private fun fire() {

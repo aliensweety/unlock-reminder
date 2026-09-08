@@ -30,8 +30,10 @@
     <string name="wizard_step_usage">② 使用情况访问（统计各应用时长）</string>
     <string name="wizard_step_overlay">③ 悬浮窗（全局弹窗必需）</string>
     <string name="wizard_step_battery">④ 电池优化白名单（防服务被杀）</string>
-    <string name="wizard_step_alarm">⑤ 精确闹钟（到点准时 + 叫醒被冻结的后台）</string>
+    <string name="wizard_step_a11y">⑤ 无障碍保活（防冻结·强烈推荐）</string>
     <string name="wizard_step_oem">⑥ 厂商自启动与后台弹出（ColorOS/MIUI 等必须）</string>
+    <string name="accessibility_label">解锁提醒保活服务</string>
+    <string name="accessibility_desc">用于保证到点提醒准时弹出。本服务不读取、不记录任何屏幕内容，开启后请在系统电池设置中同时允许本应用后台运行。</string>
     <string name="wizard_footer">说明：⑤ 无公开检测接口，开启后请回到本页用「5 秒延迟测试」验证：按下后立刻切到微信等其它应用，能盖住即为全局弹窗成功。OPPO 路径参考：设置→应用→应用管理→解锁提醒→权限管理→允许「后台弹出界面」；自启动在 应用信息→允许自启。侧载安装（Android 13+）若开关是灰的，请到 应用信息→右上角菜单→「允许受限设置」。</string>
     <string name="ch_monitor">后台运行</string>
     <string name="ch_countdown">倒计时进行中</string>

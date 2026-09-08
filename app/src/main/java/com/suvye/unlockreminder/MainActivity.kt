@@ -50,7 +50,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnPermOverlay: Button
     private lateinit var btnPermBattery: Button
     private lateinit var btnPermFsi: Button
-    private lateinit var btnPermAlarm: Button
+    private lateinit var btnPermA11y: Button
 
     private val handler = Handler(Looper.getMainLooper())
     private var suppressSwitch = false
@@ -78,7 +78,7 @@ class MainActivity : AppCompatActivity() {
         btnPermOverlay = findViewById(R.id.btnPermOverlay)
         btnPermBattery = findViewById(R.id.btnPermBattery)
         btnPermFsi = findViewById(R.id.btnPermFsi)
-        btnPermAlarm = findViewById(R.id.btnPermAlarm)
+        btnPermA11y = findViewById(R.id.btnPermA11y)
 
         spinnerInterval.adapter = ArrayAdapter(
             this,
@@ -209,13 +209,10 @@ class MainActivity : AppCompatActivity() {
                 openAppDetails()
             }
         }
-        // 精确闹钟：到点准时 + 能把被 ROM 冻结的后台进程叫醒（宏软件同款关键权限）
-        btnPermAlarm.setOnClickListener {
+        // 无障碍保活：与系统常驻绑定，进程不进 ColorOS/MIUI 速冻名单（宏软件同款机制）
+        btnPermA11y.setOnClickListener {
             try {
-                startActivity(
-                    Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
-                        Uri.parse("package:$packageName"))
-                )
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             } catch (_: Exception) {
                 openAppDetails()
             }
@@ -304,12 +301,9 @@ class MainActivity : AppCompatActivity() {
             val nm = getSystemService(NotificationManager::class.java)
             btnPermFsi.text = mark(nm?.canUseFullScreenIntent() == true, "⑤ 全屏弹出（全屏意图）")
         }
-        val alarmVisible = Build.VERSION.SDK_INT >= 31
-        btnPermAlarm.visibility = if (alarmVisible) View.VISIBLE else View.GONE
-        if (alarmVisible) {
-            val am = getSystemService(android.app.AlarmManager::class.java)
-            btnPermAlarm.text = mark(am?.canScheduleExactAlarms() == true, "⑥ 精确闹钟（穿透后台冻结）")
-        }
+        btnPermA11y.visibility = View.VISIBLE
+        btnPermA11y.text =
+            mark(KeepAliveAccessibilityService.isEnabled(this), "⑥ 无障碍保活（防冻结·强烈推荐）")
     }
 
     private fun mark(ok: Boolean, label: String): String =

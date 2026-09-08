@@ -88,6 +88,7 @@ object UsageStatsHelper {
         val pm = ctx.packageManager
         return totals.entries
             .filter { it.key != ctx.packageName && it.key != homePkg }
+            .filter { it.value >= 1_000L } // 0 秒的系统组件（photopicker/IntentResolver 等）是噪音
             .sortedByDescending { it.value }
             .take(limit)
             .map { (pkg, ms) ->
