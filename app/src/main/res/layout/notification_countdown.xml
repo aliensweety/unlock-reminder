@@ -12,8 +12,8 @@
         android:src="@drawable/ic_stat_timer"
         android:tint="#5F6368" />
 
-    <Chronometer
-        android:id="@+id/notifChronometer"
+    <TextView
+        android:id="@+id/notifTime"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="12dp"
@@ -24,6 +24,6 @@
         android:id="@+id/notifHint"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
+        android:layout_marginStart="10dp"
         android:textSize="13sp" />
 </LinearLayout>

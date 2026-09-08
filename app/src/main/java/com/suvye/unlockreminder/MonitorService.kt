@@ -57,12 +57,26 @@ class MonitorService : Service() {
     private var pendingElapsed = 0L
     private var pendingUsage: List<String> = emptyList()
     private var pendingLateTag = ""
+    private var fireAtWall = 0L
+    private var fireAtElapsed = 0L
 
     /** 心跳：看门狗闹钟据此判断服务是否被冻/被杀 */
     private val heartbeatRunnable = object : Runnable {
         override fun run() {
             Prefs.setLastHeartbeat(this@MonitorService, System.currentTimeMillis())
             handler.postDelayed(this, 60_000L)
+        }
+    }
+
+    /** 倒计时通知周期刷新：剩余时间文本 + 绝对到点时刻（ROM 不渲染走字控件时靠它） */
+    private val countdownUpdater = object : Runnable {
+        override fun run() {
+            if (roundStart == 0L || scheduledRoundId == 0L || fireAtElapsed == 0L) return
+            // 剩余时间一律用单调时钟（elapsedRealtime）计算，墙钟会被 NTP 跳动
+            val remainingMs = fireAtElapsed - SystemClock.elapsedRealtime()
+            if (remainingMs <= 0L) return
+            updateCountdownNotification(remainingMs)
+            handler.postDelayed(this, if (remainingMs <= 15_000L) 1_000L else 10_000L)
         }
     }
 
@@ -123,6 +137,7 @@ class MonitorService : Service() {
     override fun onDestroy() {
         handler.removeCallbacks(fireRunnable)
         handler.removeCallbacks(heartbeatRunnable)
+        handler.removeCallbacks(countdownUpdater)
         overlayReminder.close()
         // 通知无论如何都撤掉；本轮状态只在用户主动关闭时清，
         // 系统回收服务（会走 onDestroy 再 sticky 重启）时保留，交给 recoverRoundIfNeeded 恢复
@@ -205,9 +220,12 @@ class MonitorService : Service() {
 
     private fun cancelRound() {
         handler.removeCallbacks(fireRunnable)
+        handler.removeCallbacks(countdownUpdater)
         overlayReminder.close()
         roundStart = 0L
         scheduledRoundId = 0L
+        fireAtWall = 0L
+        fireAtElapsed = 0L
         Prefs.clearRound(this)
         Prefs.setRoundIntervalOverride(this, 0L)
         getSystemService(AlarmManager::class.java)?.cancel(fireAlarmPending())
@@ -258,7 +276,7 @@ class MonitorService : Service() {
         Prefs.setLastFireAt(this, now)
 
         NotificationManagerCompat.from(this).cancel(NOTIF_COUNTDOWN)
-
+        handler.removeCallbacks(countdownUpdater)
         pendingElapsed = elapsed
         pendingUsage = usage
 
@@ -338,19 +356,26 @@ class MonitorService : Service() {
         Prefs.setLastFire(this, "$result · $time")
     }
 
-    /** 倒计时通知：RemoteViews + Chronometer（DeskClock 同款），比系统模板的 chronometer extras 更耐 ROM 定制 */
+    /** 倒计时通知：RemoteViews 走字 + 周期刷新的剩余时间/绝对到点时刻（ROM 不渲染走字控件时仍可见） */
     private fun showCountdownNotification(intervalMs: Long) {
+        fireAtWall = System.currentTimeMillis() + intervalMs
+        fireAtElapsed = SystemClock.elapsedRealtime() + intervalMs
+        handler.removeCallbacks(countdownUpdater)
+        handler.postDelayed(countdownUpdater, 1_000L)
+        updateCountdownNotification(intervalMs)
+    }
+
+    private fun updateCountdownNotification(remainingMs: Long) {
         val stopIntent = PendingIntent.getService(
             this, 1,
             Intent(this, MonitorService::class.java).setAction(ACTION_CANCEL_ROUND),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val views = RemoteViews(packageName, R.layout.notification_countdown)
-        views.setChronometer(
-            R.id.notifChronometer,
-            SystemClock.elapsedRealtime() + intervalMs,
-            null,
-            true
+        val untilText = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(fireAtWall))
+        views.setTextViewText(
+            R.id.notifTime,
+            "剩余${UsageStatsHelper.formatDuration(remainingMs)} · $untilText 到点"
         )
         views.setTextViewText(R.id.notifHint, getString(R.string.countdown_body))
         val notification = NotificationCompat.Builder(this, CH_COUNTDOWN)
