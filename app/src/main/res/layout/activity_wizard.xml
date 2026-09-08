@@ -2,6 +2,7 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/page_bg"
     android:fillViewport="true">
 
     <LinearLayout
@@ -15,6 +16,7 @@
             android:layout_height="wrap_content"
             android:text="@string/wizard_title"
             android:textAppearance="?attr/textAppearanceTitleLarge"
+            android:textColor="@color/ink"
             android:textStyle="bold" />
 
         <TextView
@@ -22,7 +24,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:background="@drawable/bg_banner"
+                android:background="@drawable/bg_panel"
             android:lineSpacingExtra="4dp"
             android:padding="12dp"
             android:textColor="@color/ink"
@@ -33,6 +35,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
             android:text="@string/wizard_step_notif"
+            android:textColor="@color/ink"
             android:textSize="15sp"
             android:textStyle="bold" />
 
@@ -63,6 +66,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
             android:text="@string/wizard_step_usage"
+            android:textColor="@color/ink"
             android:textSize="15sp"
             android:textStyle="bold" />
 
@@ -93,6 +97,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
             android:text="@string/wizard_step_overlay"
+            android:textColor="@color/ink"
             android:textSize="15sp"
             android:textStyle="bold" />
 
@@ -123,6 +128,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
             android:text="@string/wizard_step_battery"
+            android:textColor="@color/ink"
             android:textSize="15sp"
             android:textStyle="bold" />
 
@@ -153,6 +159,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
             android:text="@string/wizard_step_a11y"
+            android:textColor="@color/ink"
             android:textSize="15sp"
             android:textStyle="bold" />
 
@@ -183,6 +190,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
             android:text="@string/wizard_step_oem"
+            android:textColor="@color/ink"
             android:textSize="15sp"
             android:textStyle="bold" />
 

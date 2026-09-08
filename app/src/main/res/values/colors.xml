@@ -1,31 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="page_bg">#F2F2F7</color>
+    <!-- 高对比层级：灰底更灰、白卡更白，层次靠描边不靠阴影 -->
+    <color name="page_bg">#EFEFF4</color>
     <color name="surface">#FFFFFF</color>
     <color name="surface_container">#FFFFFF</color>
     <color name="row_bg">#FFFFFF</color>
-    <color name="chip_bg">#00000000</color>
-    <color name="chip_text">#007AFF</color>
-    <color name="ink">#000000</color>
-    <color name="ink_muted">#8E8E93</color>
+    <color name="chip_bg">#E4E4E9</color>
+    <color name="chip_text">#3A3A3E</color>
+    <!-- 正文近黑，辅助灰对白底 6.9:1 -->
+    <color name="ink">#1A1A1A</color>
+    <color name="ink_muted">#59595E</color>
+    <!-- 品牌蓝只保留给「去开启/继续」一个语义动作 -->
     <color name="brand_primary">#007AFF</color>
     <color name="on_primary">#FFFFFF</color>
     <color name="brand_container">#E8F1FC</color>
     <color name="on_primary_container">#003A75</color>
-    <color name="secondary_container">#E5E5EA</color>
-    <color name="on_secondary_container">#000000</color>
+    <color name="secondary_container">#E4E4E9</color>
+    <color name="on_secondary_container">#1A1A1A</color>
     <color name="outline">#C6C6C8</color>
-    <color name="banner_bg">#FFFFFF</color>
-    <color name="banner_text">#007AFF</color>
-    <color name="error">#FF3B30</color>
+    <!-- 权限横幅=警告态：红容器深红字，与正常态一眼可分 -->
+    <color name="banner_bg">#FFE8E6</color>
+    <color name="banner_text">#B42318</color>
+    <color name="error">#D70015</color>
     <color name="ic_launcher_background">#E3ECFB</color>
     <color name="keepalive_dot">#00000000</color>
-    <color name="row_divider">#C6C6C8</color>
+    <color name="row_divider">#D5D5DA</color>
 
+    <!-- 到点浮层恒为深色 -->
     <color name="reminder_background">#000000</color>
     <color name="reminder_card">#1C1C1E</color>
-    <color name="reminder_text_secondary">#8E8E93</color>
-    <color name="reminder_outline">#38383A</color>
+    <color name="reminder_text_secondary">#A0A0A6</color>
+    <color name="reminder_outline">#48484A</color>
     <color name="reminder_title">#FFFFFF</color>
-    <color name="reminder_body">#8E8E93</color>
+    <color name="reminder_body">#C7C7CC</color>
 </resources>

@@ -48,6 +48,7 @@
     <style name="PermButton" parent="Widget.Material3.Button.TonalButton">
         <item name="android:insetTop">3dp</item>
         <item name="android:insetBottom">3dp</item>
-        <item name="android:textSize">14sp</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
     </style>
 </resources>

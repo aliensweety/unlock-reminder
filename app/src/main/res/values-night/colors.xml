@@ -1,24 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- 深色：纯黑底 + #1C1C1E 卡片 + 描边拉开层次 -->
     <color name="page_bg">#000000</color>
     <color name="surface">#1C1C1E</color>
     <color name="surface_container">#1C1C1E</color>
     <color name="row_bg">#1C1C1E</color>
-    <color name="chip_bg">#00000000</color>
-    <color name="chip_text">#0A84FF</color>
+    <color name="chip_bg">#2C2C2E</color>
+    <color name="chip_text">#E0E0E5</color>
     <color name="ink">#FFFFFF</color>
-    <color name="ink_muted">#8E8E93</color>
+    <color name="ink_muted">#A0A0A6</color>
     <color name="brand_primary">#0A84FF</color>
     <color name="on_primary">#FFFFFF</color>
     <color name="brand_container">#0A2540</color>
     <color name="on_primary_container">#6BB0FF</color>
     <color name="secondary_container">#2C2C2E</color>
-    <color name="on_secondary_container">#FFFFFF</color>
-    <color name="outline">#38383A</color>
-    <color name="banner_bg">#1C1C1E</color>
-    <color name="banner_text">#0A84FF</color>
+    <color name="on_secondary_container">#E5E5EA</color>
+    <color name="outline">#48484A</color>
+    <color name="banner_bg">#3A1512</color>
+    <color name="banner_text">#FFB4AB</color>
     <color name="error">#FF453A</color>
     <color name="ic_launcher_background">#0A84FF</color>
     <color name="keepalive_dot">#00000000</color>
-    <color name="row_divider">#38383A</color>
+    <color name="row_divider">#2C2C2E</color>
 </resources>

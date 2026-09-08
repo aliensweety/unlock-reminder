@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/page_bg"
     android:fillViewport="true">
 
     <LinearLayout
@@ -19,6 +21,7 @@
             android:text="@string/settings_title"
             android:textColor="@color/ink"
             android:textSize="34sp"
+            android:letterSpacing="-0.01"
             android:textStyle="bold" />
 
         <TextView
@@ -28,8 +31,10 @@
             android:layout_marginStart="4dp"
             android:text="@string/perm_section"
             android:textAllCaps="true"
+            android:letterSpacing="0.06"
             android:textColor="@color/ink_muted"
-            android:textSize="13sp" />
+            android:textSize="13sp"
+            android:textStyle="bold" />
 
         <Button
             android:id="@+id/btnPermNotif"
@@ -83,7 +88,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="@string/btn_stealth_dot" />
+            android:fontFamily="sans-serif-medium"
+            android:textColor="@color/ink"
+            android:text="@string/btn_stealth_dot"
+            app:strokeColor="@color/outline" />
 
         <Button
             android:id="@+id/btnResetStats"
@@ -91,7 +99,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="@string/btn_reset_stats" />
+            android:fontFamily="sans-serif-medium"
+            android:textColor="@color/error"
+            android:text="@string/btn_reset_stats"
+            app:strokeColor="@color/error" />
 
         <TextView
             android:id="@+id/versionText"
@@ -99,6 +110,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:gravity="center"
+            android:fontFeatureSettings="tnum"
             android:textColor="@color/ink_muted"
             android:textSize="13sp" />
     </LinearLayout>
