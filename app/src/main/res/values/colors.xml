@@ -18,7 +18,7 @@
     <color name="banner_bg">#FFFFFF</color>
     <color name="banner_text">#007AFF</color>
     <color name="error">#FF3B30</color>
-    <color name="ic_launcher_background">#007AFF</color>
+    <color name="ic_launcher_background">#E3ECFB</color>
     <color name="keepalive_dot">#00000000</color>
     <color name="row_divider">#C6C6C8</color>
 
