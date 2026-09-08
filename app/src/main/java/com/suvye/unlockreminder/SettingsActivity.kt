@@ -14,6 +14,7 @@ import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.TextView
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Spinner
@@ -151,6 +152,8 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnWizard).setOnClickListener {
             startActivity(Intent(this, WizardActivity::class.java))
         }
+        findViewById<TextView>(R.id.versionText).text =
+            "解锁提醒 v" + BuildConfig.VERSION_NAME + " · 构建于本地与 GitHub Actions"
         findViewById<Button>(R.id.btnResetStats).setOnClickListener {
             AlertDialog.Builder(this)
                 .setTitle(getString(R.string.reset_title))
