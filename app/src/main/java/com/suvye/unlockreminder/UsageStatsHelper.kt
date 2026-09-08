@@ -4,7 +4,6 @@ import android.app.AppOpsManager
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
-import android.content.Intent
 import android.os.Process
 
 object UsageStatsHelper {
@@ -44,10 +43,12 @@ object UsageStatsHelper {
             return emptyList()
         }
         val event = UsageEvents.Event()
+        var rawCount = 0
         try {
             while (events.hasNextEvent()) {
                 events.getNextEvent(event)
                 val pkg = event.packageName ?: continue
+                rawCount++
                 when (event.eventType) {
                     UsageEvents.Event.ACTIVITY_RESUMED -> {
                         val c = openCount[pkg] ?: 0
@@ -79,15 +80,9 @@ object UsageStatsHelper {
         openCount.clear()
         resumeAt.clear()
 
-        val homePkg = try {
-            val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-            ctx.packageManager.resolveActivity(homeIntent, 0)?.activityInfo?.packageName
-        } catch (_: Exception) {
-            null
-        }
         val pm = ctx.packageManager
         return totals.entries
-            .filter { it.key != ctx.packageName && it.key != homePkg }
+            .filter { it.key != ctx.packageName }
             .filter { it.value >= 1_000L } // 0 秒的系统组件（photopicker/IntentResolver 等）是噪音
             .sortedByDescending { it.value }
             .take(limit)

@@ -294,7 +294,7 @@ class MainActivity : AppCompatActivity() {
         btnPermOverlay.text = mark(Settings.canDrawOverlays(this), "③ 悬浮窗权限")
         val pm = getSystemService(PowerManager::class.java)
         btnPermBattery.text =
-            mark(pm?.isIgnoringBatteryOptimizations(packageName) == true, "④ 电池优化白名单")
+            mark(pm?.isIgnoringBatteryOptimizations(packageName) == true, "④ 电池优化白名单（可选增强）")
         val fsiVisible = Build.VERSION.SDK_INT >= 34
         btnPermFsi.visibility = if (fsiVisible) View.VISIBLE else View.GONE
         if (fsiVisible) {

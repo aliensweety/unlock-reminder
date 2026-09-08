@@ -65,6 +65,7 @@ class MonitorService : Service() {
     private var pendingLateTag = ""
     private var fireAtWall = 0L
     private var fireAtElapsed = 0L
+    private var statsCache: List<String> = emptyList()
 
     /** 心跳：看门狗闹钟据此判断服务是否被冻/被杀 */
     private val heartbeatRunnable = object : Runnable {
@@ -83,6 +84,20 @@ class MonitorService : Service() {
             if (remainingMs <= 0L) return
             updateCountdownNotification(remainingMs)
             handler.postDelayed(this, if (remainingMs <= 15_000L) 1_000L else 10_000L)
+        }
+    }
+
+    /**
+     * 使用事件入账有延迟（ColorOS 可滞后数秒~更久），10 秒的短轮次到点时
+     * 最近事件可能还没入账 → 一次性查询会漏掉整轮。
+     * 对策：轮次进行中每 2 秒滚动重算并缓存，到点时取「新鲜 ∨ 缓存」中更全的一份。
+     */
+    private val statsPoller = object : Runnable {
+        override fun run() {
+            if (roundStart == 0L || scheduledRoundId == 0L) return
+            statsCache = UsageStatsHelper.topUsage(this@MonitorService, roundStart, System.currentTimeMillis())
+            android.util.Log.d("URFire", "poll cached=${statsCache.size} -> ${statsCache.joinToString("|")}")
+            handler.postDelayed(this, 2_000L)
         }
     }
 
@@ -145,6 +160,7 @@ class MonitorService : Service() {
         handler.removeCallbacks(fireRunnable)
         handler.removeCallbacks(heartbeatRunnable)
         handler.removeCallbacks(countdownUpdater)
+        handler.removeCallbacks(statsPoller)
         overlayReminder.close()
         removeKeepAliveDot()
         // 通知无论如何都撤掉；本轮状态只在用户主动关闭时清，
@@ -178,6 +194,7 @@ class MonitorService : Service() {
             roundStart = start
             scheduledRoundId = start
             handler.post(fireRunnable)
+            handler.postDelayed(statsPoller, 2_000L)
         } else {
             // 过期太久（长时间死亡后的陈旧轮）：丢弃
             Prefs.clearRound(this)
@@ -207,6 +224,9 @@ class MonitorService : Service() {
         val seconds = if (overrideSeconds > 0) overrideSeconds else Prefs.intervalSeconds(this)
         val intervalMs = seconds * 1000L
         handler.postDelayed(fireRunnable, intervalMs)
+        statsCache = emptyList()
+        handler.removeCallbacks(statsPoller)
+        handler.postDelayed(statsPoller, 2_000L)
         // 宏软件同款双保险：setAlarmClock 被系统视为真实闹钟，ColorOS/MIUI 不做闹钟对齐延迟，
         // 且无需 SCHEDULE_EXACT_ALARM 权限；进程被速冻时由系统闹钟破冻叫醒到点
         val am = getSystemService(AlarmManager::class.java)
@@ -230,6 +250,8 @@ class MonitorService : Service() {
     private fun cancelRound() {
         handler.removeCallbacks(fireRunnable)
         handler.removeCallbacks(countdownUpdater)
+        handler.removeCallbacks(statsPoller)
+        statsCache = emptyList()
         overlayReminder.close()
         roundStart = 0L
         scheduledRoundId = 0L
@@ -319,7 +341,12 @@ class MonitorService : Service() {
         pendingLateTag =
             if (lateMs > 15_000L) " · 迟到${lateMs / 1000L}秒（后台被冻结过）" else ""
         val elapsed = now - roundStart
-        val usage = ArrayList(UsageStatsHelper.topUsage(this, roundStart, now))
+        // 到点统计：新鲜查询 ∨ 轮询缓存，取更全的一份（对抗事件入账延迟）
+        val freshUsage = UsageStatsHelper.topUsage(this, roundStart, now)
+        val usage =
+            if (statsCache.size > freshUsage.size) ArrayList(statsCache) else ArrayList(freshUsage)
+        statsCache = emptyList()
+        handler.removeCallbacks(statsPoller)
         Prefs.clearRound(this)
         Prefs.setRoundIntervalOverride(this, 0L)
         Prefs.setLastFireAt(this, now)
@@ -332,6 +359,7 @@ class MonitorService : Service() {
         // ── 主路径：悬浮窗全屏浮层。挂载成功≠显示成功（ColorOS 会静默吞窗），
         //    OverlayReminder 500ms 后异步验证，成败经 onOverlayShown/onOverlayFailed 回调 ──
         val overlayGranted = Settings.canDrawOverlays(this)
+        android.util.Log.d("URFire", "fire late=${lateMs}ms overlayGranted=$overlayGranted pollCache=${statsCache.size}")
         if (overlayGranted && overlayReminder.show(elapsed, usage)) {
             markFire("浮层已挂载，验证中…" + pendingLateTag)
             return
@@ -389,12 +417,14 @@ class MonitorService : Service() {
     /** 浮层异步验证通过：真·全局浮层 */
     fun onOverlayShown() {
         if (!Prefs.isRunning(this)) return
+        android.util.Log.d("URFire", "onOverlayShown")
         markFire("全局浮层 ✓" + pendingLateTag)
     }
 
     /** 浮层异步验证失败（含不可聚焦重试后）：走兜底链 */
     fun onOverlayFailed(reason: String) {
         if (!Prefs.isRunning(this)) return
+        android.util.Log.d("URFire", "onOverlayFailed reason=$reason")
         markFire("浮层失败($reason)，走兜底" + pendingLateTag)
         runFallback()
     }

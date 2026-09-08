@@ -83,16 +83,20 @@ class OverlayReminder(private val host: MonitorService) {
         return try {
             wm.addView(v, params)
             view = v
+            android.util.Log.d("URFire", "tryAdd ok attempt=$attempt attached=${v.isAttachedToWindow}")
             handler.postDelayed(verifyRunnable, 500L)
             true
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.d("URFire", "tryAdd FAIL attempt=$attempt ${e.javaClass.simpleName}")
             false
         }
     }
 
     private fun verify() {
         val v = view ?: return
-        if (v.isAttachedToWindow && v.windowToken != null) {
+        val attached = v.isAttachedToWindow && v.windowToken != null
+        android.util.Log.d("URFire", "verify attempt=$attempt attached=$attached token=${v.windowToken != null} vis=${v.visibility} alpha=${v.alpha} w=${v.width} h=${v.height}")
+        if (attached) {
             host.onOverlayShown()
         } else if (attempt < 2) {
             attempt++
