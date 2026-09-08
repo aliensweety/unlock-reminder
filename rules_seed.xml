@@ -1,5 +1,0 @@
-<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-<map>
-    <long name="default_sec" value="0" />
-    <string name="overrides_json">[{"pkg":"com.android.settings","label":"Settings","sec":60}]</string>
-</map>

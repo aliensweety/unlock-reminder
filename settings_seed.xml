@@ -1,5 +1,0 @@
-<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-<map>
-    <long name="interval_seconds" value="180" />
-    <boolean name="service_running" value="true" />
-</map>

@@ -8,3 +8,5 @@ captures/
 .cxx/
 app/keystore.jks
 unlock-reminder.apk
+rules_seed.xml
+settings_seed.xml
