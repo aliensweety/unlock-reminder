@@ -16,6 +16,7 @@ object StatsStore {
     private const val KEY_TODAY_UNLOCKS = "today_unlocks"
     private const val KEY_TODAY_ROUNDS = "today_rounds"
     private const val KEY_TODAY_REMINDERS = "today_reminders"
+    private const val KEY_TODAY_APP_REMINDERS = "today_app_reminders"
     private const val KEY_APPSEC_PREFIX = "appms_"
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -33,6 +34,7 @@ object StatsStore {
             sp.putLong(KEY_TODAY_UNLOCKS, 0L)
             sp.putLong(KEY_TODAY_ROUNDS, 0L)
             sp.putLong(KEY_TODAY_REMINDERS, 0L)
+            sp.putString(KEY_TODAY_APP_REMINDERS, "{}")
         }
         val v = (ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE).getLong(key, 0L)) + 1
         sp.putLong(key, v)
@@ -50,9 +52,32 @@ object StatsStore {
         bumpToday(ctx, KEY_TODAY_ROUNDS)
     }
 
-    fun onReminder(ctx: Context) {
-        sp(ctx).edit().putLong(KEY_REMINDERS, sp(ctx).getLong(KEY_REMINDERS, 0L) + 1).apply()
-        bumpToday(ctx, KEY_TODAY_REMINDERS)
+    fun onReminder(ctx: Context, pkg: String) {
+        val e = sp(ctx).edit()
+        e.putLong(KEY_REMINDERS, sp(ctx).getLong(KEY_REMINDERS, 0L) + 1)
+        if (sp(ctx).getString(KEY_TODAY, "") != today()) {
+            e.putString(KEY_TODAY, today())
+            e.putLong(KEY_TODAY_UNLOCKS, 0L)
+            e.putLong(KEY_TODAY_ROUNDS, 0L)
+            e.putLong(KEY_TODAY_REMINDERS, 0L)
+            e.putString(KEY_TODAY_APP_REMINDERS, "{}")
+        }
+        e.putLong(KEY_TODAY_REMINDERS, sp(ctx).getLong(KEY_TODAY_REMINDERS, 0L) + 1)
+        val perApp = try {
+            JSONObject(sp(ctx).getString(KEY_TODAY_APP_REMINDERS, "{}") ?: "{}")
+        } catch (_: Exception) {
+            JSONObject()
+        }
+        perApp.put(pkg, perApp.optInt(pkg, 0) + 1)
+        e.putString(KEY_TODAY_APP_REMINDERS, perApp.toString())
+        e.apply()
+    }
+
+    /** 某应用今日被提醒次数（循环提醒在通知栏展示用） */
+    fun todayRemindersFor(ctx: Context, pkg: String): Int = try {
+        JSONObject(sp(ctx).getString(KEY_TODAY_APP_REMINDERS, "{}") ?: "{}").optInt(pkg, 0)
+    } catch (_: Exception) {
+        0
     }
 
     /** 轮次结束时累加各应用本轮使用毫秒 */

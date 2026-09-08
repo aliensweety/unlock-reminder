@@ -1,6 +1,7 @@
 package com.suvye.unlockreminder
 
 import android.content.Context
+import org.json.JSONObject
 
 object Prefs {
     private const val FILE = "settings"
@@ -12,6 +13,8 @@ object Prefs {
     private const val KEY_INTERVAL_OVERRIDE = "interval_override"
     private const val KEY_HEARTBEAT = "service_heartbeat"
     private const val KEY_STEALTH_DOT = "keepalive_stealth_dot"
+    private const val KEY_CREDITED = "credited_json"
+    private const val KEY_CREDITED_ROUND = "credited_round"
 
     const val DEFAULT_INTERVAL_SECONDS = 10L
     const val MIN_INTERVAL_SECONDS = 5L
@@ -74,5 +77,32 @@ object Prefs {
 
     fun setKeepaliveStealth(ctx: Context, value: Boolean) {
         sp(ctx).edit().putBoolean(KEY_STEALTH_DOT, value).apply()
+    }
+
+    /**
+     * 循环提醒的已入账毫秒（pkg → 提醒时该应用的 raw 累计）。
+     * effective = raw - credited[pkg]：提醒后该应用从 0 重新计。
+     * 带 roundStart 校验：换轮自动作废。写穿持久化，服务被杀重建不丢。
+     */
+    fun credited(ctx: Context, roundStart: Long): Map<String, Long> {
+        if (sp(ctx).getLong(KEY_CREDITED_ROUND, 0L) != roundStart) return emptyMap()
+        val json = sp(ctx).getString(KEY_CREDITED, null) ?: return emptyMap()
+        return try {
+            val o = JSONObject(json)
+            val out = HashMap<String, Long>()
+            for (k in o.keys()) out[k] = o.getLong(k)
+            out
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    fun setCredited(ctx: Context, roundStart: Long, credited: Map<String, Long>) {
+        val o = JSONObject()
+        for ((k, v) in credited) o.put(k, v)
+        sp(ctx).edit()
+            .putLong(KEY_CREDITED_ROUND, roundStart)
+            .putString(KEY_CREDITED, o.toString())
+            .apply()
     }
 }

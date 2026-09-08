@@ -66,7 +66,6 @@
     <string name="rules_pick_search">搜索</string>
     <string name="rules_pick_done">完成（%1$d）</string>
     <string name="rules_waiting"> </string>
-    <string name="rules_reminded">已提醒</string>
     <string name="rules_used_left">剩余 %1$s</string>
     <string name="rules_custom_title">自定义</string>
     <string name="rules_custom_hint">分钟</string>
@@ -81,8 +80,8 @@
     <string name="status_need_apps">先添加应用</string>
     <string name="notif_remaining">剩余</string>
     <string name="notif_more">还有 %1$d 个</string>
-    <string name="notif_reminded">%1$s  已提醒</string>
     <string name="notif_left">%1$s  剩余 %2$s</string>
+    <string name="notif_left_counted">%1$s  剩余 %2$s · 今日%3$d次</string>
     <string name="notif_stats_warn">⚠ 统计受限，时长可能不准</string>
     <string name="notif_fix_stats">修复统计权限</string>
     <string name="notif_fix_a11y">修复无障碍</string>

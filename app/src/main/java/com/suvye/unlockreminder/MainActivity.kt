@@ -184,10 +184,17 @@ class MainActivity : AppCompatActivity() {
     private fun updateLiveRemaining() {
         val roundStart = Prefs.roundStart(this)
         val running = Prefs.isRunning(this)
-        val totals = if (running && roundStart > 0L) {
+        var totals = if (running && roundStart > 0L) {
             UsageStatsHelper.totalsFor(this, roundStart, roundStart, System.currentTimeMillis())
         } else {
             emptyMap()
+        }
+        if (totals.isNotEmpty()) {
+            // 循环提醒：减掉各应用已提醒掉的时长，与通知栏口径一致
+            val cr = Prefs.credited(this, roundStart)
+            if (cr.isNotEmpty()) {
+                totals = totals.mapValues { (it.value - (cr[it.key] ?: 0L)).coerceAtLeast(0L) }
+            }
         }
         val rules = RulesStore.overrides(this).associateBy { it.pkg }
         for (i in 0 until rulesContainer.childCount) {
@@ -200,10 +207,6 @@ class MainActivity : AppCompatActivity() {
             when {
                 !running || roundStart <= 0L -> {
                     remainingView.visibility = View.GONE
-                }
-                used >= limit && limit > 0L -> {
-                    remainingView.visibility = View.VISIBLE
-                    remainingView.text = getString(R.string.rules_reminded)
                 }
                 else -> {
                     remainingView.visibility = View.VISIBLE

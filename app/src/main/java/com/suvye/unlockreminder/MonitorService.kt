@@ -65,7 +65,12 @@ class MonitorService : Service() {
     private var pendingHeading = ""
     private var statsCache: Map<String, Long> = emptyMap()
     private var statsStale = 0
-    private val remindedApps = HashSet<String>()
+
+    /** 循环提醒重置基准：pkg → 该应用提醒时刻的 raw 累计毫秒。effective = raw − credited。 */
+    private val credited = HashMap<String, Long>()
+
+    /** 当前浮层对应的应用（「知道了」时把浮层显示期间的增长一并 credited） */
+    private var hitPkg: String? = null
 
     private val heartbeatRunnable = object : Runnable {
         override fun run() {
@@ -75,44 +80,54 @@ class MonitorService : Service() {
     }
 
     /**
-     * 每 2 秒全量重算（双源：无障碍账本 ∨ queryEvents，见 UsageStatsHelper.totalsFor）。
-     * 全量重算本身就是单调的（使用在涨），不再需要旧版的 merge-max 缓存——
-     * 那套在查询空转时会把显示永久冻结在旧值（「剩 6 秒不动」的成因之一）。
+     * 每 2 秒全量重算（双源：无障碍账本 ∨ queryEvents，见 UsageStatsHelper.totalsFor），
+     * 再减掉各应用已提醒掉的时长（循环提醒：提醒一次从 0 重新计）。
+     * statsCache 与通知、规则引擎、闹钟排程统一只看 effective 值。
      */
     private val statsPoller = object : Runnable {
         override fun run() {
             if (roundStart == 0L || scheduledRoundId == 0L) return
             refreshStats()
-            checkPerAppRules(statsCache)
+            checkPerAppRules()
             updateMonitorNotification(statsCache)
             handler.postDelayed(this, 2_000L)
         }
     }
 
     private fun refreshStats() {
-        val totals = UsageStatsHelper.totalsFor(this@MonitorService, roundStart, roundStart, System.currentTimeMillis())
-        statsStale = if (totals == statsCache) statsStale + 1 else 0
-        statsCache = totals
+        val raw = UsageStatsHelper.totalsFor(this@MonitorService, roundStart, roundStart, System.currentTimeMillis())
+        statsStale = if (raw == lastRaw) statsStale + 1 else 0
+        lastRaw = raw
+        statsCache = raw
+        if (credited.isNotEmpty()) {
+            val eff = HashMap<String, Long>()
+            for ((k, v) in raw) eff[k] = (v - (credited[k] ?: 0L)).coerceAtLeast(0L)
+            statsCache = eff
+        }
     }
 
-    /** 分应用：本轮累计 ≥ 阈值 → 弹一次。解锁后才重新计。 */
-    private fun checkPerAppRules(totals: Map<String, Long>) {
+    private var lastRaw: Map<String, Long> = emptyMap()
+
+    /** 分应用循环提醒：effective 累计 ≥ 阈值 → 弹一次并把该应用从 0 重新计。解锁清空重计。 */
+    private fun checkPerAppRules() {
         if (roundStart == 0L) return
         if (overlayReminder.isShowing()) return
         if (System.currentTimeMillis() - roundStart < 3_000L) return
-        for ((pkg, ms) in totals) {
-            if (pkg in remindedApps) continue
+        for ((pkg, ms) in statsCache) {
             val sec = RulesStore.effectiveSec(this, pkg)
             if (sec <= 0 || ms < sec * 1000L) continue
-            remindedApps.add(pkg)
-            StatsStore.onReminder(this)
+            credited[pkg] = ms + (credited[pkg] ?: 0L)
+            Prefs.setCredited(this, roundStart, credited)
+            StatsStore.onReminder(this, pkg)
+            statsCache = statsCache.toMutableMap().apply { put(pkg, 0L) }
             val label = try {
                 packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
             } catch (_: Exception) {
                 pkg
             }
-            android.util.Log.d("URFire", "perAppRule hit $label ms=$ms sec=$sec")
-            presentReminder(label, ms, totals)
+            android.util.Log.d("URFire", "perAppRule hit $label ms=$ms sec=$sec credited=${credited[pkg]}")
+            hitPkg = pkg
+            presentReminder(label, ms, statsCache)
             break
         }
     }
@@ -205,30 +220,44 @@ class MonitorService : Service() {
         }
         roundStart = start
         scheduledRoundId = start
+        credited.clear()
+        credited.putAll(Prefs.credited(this, start))
         ForegroundLedger.startRound(start, SystemClock.elapsedRealtime())
         handler.removeCallbacks(statsPoller)
         handler.post(statsPoller)
         pokeRules()
     }
 
-    /** 「知道了」：关掉浮层，本轮其它应用继续计时。 */
+    /** 「知道了」：关掉浮层。浮层盖着时底层应用其实还在 resumed 继续累计，
+     *  把这段增长一并 credited，该应用才真正从 0 重新计。 */
     fun onOverlayConfirm() {
         overlayReminder.close()
+        hitPkg?.let { pkg ->
+            val raw = UsageStatsHelper.totalsFor(this, roundStart, roundStart, System.currentTimeMillis())
+            val rawMs = raw[pkg] ?: 0L
+            if (rawMs > (credited[pkg] ?: 0L)) credited[pkg] = rawMs
+            Prefs.setCredited(this, roundStart, credited)
+            statsCache = statsCache.toMutableMap().apply { put(pkg, 0L) }
+        }
+        hitPkg = null
         updateMonitorNotification(statsCache)
     }
 
     /** 「结束本轮」：清掉本轮，等下次解锁。 */
     fun onOverlayCancel() {
+        hitPkg = null
         overlayReminder.close()
         cancelRound()
     }
 
-    /** 解锁 = 每个应用重新计时。只提醒，不限制。 */
+    /** 解锁 = 每个应用重新计时（循环提醒的 credited 也一并清空）。只提醒，不限制。 */
     private fun startRound() {
         roundStart = System.currentTimeMillis()
         scheduledRoundId = roundStart
-        remindedApps.clear()
+        credited.clear()
+        Prefs.setCredited(this, roundStart, emptyMap())
         statsStale = 0
+        lastRaw = emptyMap()
         Prefs.setRoundStart(this, roundStart)
         Prefs.setRoundIntervalOverride(this, 0L)
         NotificationManagerCompat.from(this).cancel(NOTIF_ALARM)
@@ -247,7 +276,7 @@ class MonitorService : Service() {
             return
         }
         refreshStats()
-        checkPerAppRules(statsCache)
+        checkPerAppRules()
         updateMonitorNotification(statsCache)
         scheduleNextRuleAlarm(statsCache)
     }
@@ -263,7 +292,6 @@ class MonitorService : Service() {
         }
         var delay = 60_000L
         for (r in RulesStore.overrides(this)) {
-            if (r.pkg in remindedApps) continue
             val used = totals[r.pkg] ?: 0L
             if (used <= 0L) continue
             val remaining = r.thresholdSec * 1000L - used
@@ -293,9 +321,11 @@ class MonitorService : Service() {
         handler.removeCallbacks(statsPoller)
         statsCache = emptyMap()
         statsStale = 0
+        lastRaw = emptyMap()
         overlayReminder.close()
         roundStart = 0L
         scheduledRoundId = 0L
+        credited.clear()
         ForegroundLedger.endRound()
         Prefs.clearRound(this)
         Prefs.setRoundIntervalOverride(this, 0L)
@@ -490,13 +520,13 @@ class MonitorService : Service() {
 
         var lines = ArrayList<String>()
         for (r in rules) {
-            if (r.pkg in remindedApps) {
-                lines.add(getString(R.string.notif_reminded, r.label))
-            } else {
-                val used = totals[r.pkg] ?: 0L
-                val remaining = (r.thresholdSec * 1000L - used).coerceAtLeast(0L)
-                lines.add(getString(R.string.notif_left, r.label, UsageStatsHelper.formatDurationShort(remaining)))
-            }
+            val used = totals[r.pkg] ?: 0L
+            val remaining = (r.thresholdSec * 1000L - used).coerceAtLeast(0L)
+            val times = StatsStore.todayRemindersFor(this, r.pkg)
+            lines.add(
+                if (times > 0) getString(R.string.notif_left_counted, r.label, UsageStatsHelper.formatDurationShort(remaining), times)
+                else getString(R.string.notif_left, r.label, UsageStatsHelper.formatDurationShort(remaining))
+            )
         }
         var fixUsage = false
         var fixA11y = false
