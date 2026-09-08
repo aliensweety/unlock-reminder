@@ -1,10 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#3F51B5</color>
-    <color name="brand_primary">#3F51B5</color>
-    <color name="brand_container">#DFE2FF</color>
-    <color name="reminder_background">#131117</color>
-    <color name="reminder_card">#221F2B</color>
-    <color name="reminder_text_secondary">#C9C5D0</color>
-    <color name="reminder_outline">#57505F</color>
+    <color name="page_bg">#F2F2F7</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="surface_container">#FFFFFF</color>
+    <color name="row_bg">#FFFFFF</color>
+    <color name="chip_bg">#00000000</color>
+    <color name="chip_text">#007AFF</color>
+    <color name="ink">#000000</color>
+    <color name="ink_muted">#8E8E93</color>
+    <color name="brand_primary">#007AFF</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="brand_container">#E8F1FC</color>
+    <color name="on_primary_container">#003A75</color>
+    <color name="secondary_container">#E5E5EA</color>
+    <color name="on_secondary_container">#000000</color>
+    <color name="outline">#C6C6C8</color>
+    <color name="banner_bg">#FFFFFF</color>
+    <color name="banner_text">#007AFF</color>
+    <color name="error">#FF3B30</color>
+    <color name="ic_launcher_background">#007AFF</color>
+    <color name="keepalive_dot">#00000000</color>
+    <color name="row_divider">#C6C6C8</color>
+
+    <color name="reminder_background">#000000</color>
+    <color name="reminder_card">#1C1C1E</color>
+    <color name="reminder_text_secondary">#8E8E93</color>
+    <color name="reminder_outline">#38383A</color>
+    <color name="reminder_title">#FFFFFF</color>
+    <color name="reminder_body">#8E8E93</color>
 </resources>

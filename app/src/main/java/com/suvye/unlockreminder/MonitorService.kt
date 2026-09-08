@@ -17,14 +17,13 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.Settings
 import android.net.Uri
 import android.view.Gravity
 import android.view.View
-import android.view.ContextThemeWrapper
 import android.view.WindowManager
-import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -40,17 +39,17 @@ class MonitorService : Service() {
         const val ACTION_STOP_MONITOR = "com.suvye.unlockreminder.action.STOP_MONITOR"
         const val ACTION_FIRE_NOW = "com.suvye.unlockreminder.action.FIRE_NOW"
         const val ACTION_WATCHDOG = "com.suvye.unlockreminder.action.WATCHDOG"
-
-        /** 诊断用：临时覆盖本轮间隔（秒），>0 时生效 */
-        const val EXTRA_INTERVAL_OVERRIDE = "interval_override"
+        const val ACTION_REFRESH_DOT = "com.suvye.unlockreminder.action.REFRESH_DOT"
 
         private const val CH_MONITOR = "monitor"
-        private const val CH_COUNTDOWN = "countdown"
         private const val CH_ALARM = "alarm"
 
         private const val NOTIF_MONITOR = 1
         private const val NOTIF_COUNTDOWN = 2
         const val NOTIF_ALARM = 3
+
+        /** 连续这么多次轮询两源都无变化（×2 秒），判定统计被系统限制，通知栏告警 */
+        private const val STALE_LIMIT = 10
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -63,13 +62,11 @@ class MonitorService : Service() {
     private var pendingElapsed = 0L
     private var pendingUsage: List<String> = emptyList()
     private var pendingLateTag = ""
-    private var fireAtWall = 0L
-    private var fireAtElapsed = 0L
     private var pendingHeading = ""
     private var statsCache: Map<String, Long> = emptyMap()
+    private var statsStale = 0
     private val remindedApps = HashSet<String>()
 
-    /** 心跳：看门狗闹钟据此判断服务是否被冻/被杀 */
     private val heartbeatRunnable = object : Runnable {
         override fun run() {
             Prefs.setLastHeartbeat(this@MonitorService, System.currentTimeMillis())
@@ -77,37 +74,31 @@ class MonitorService : Service() {
         }
     }
 
-    /** 倒计时通知周期刷新：剩余时间文本 + 绝对到点时刻（ROM 不渲染走字控件时靠它） */
-    private val countdownUpdater = object : Runnable {
-        override fun run() {
-            if (roundStart == 0L || scheduledRoundId == 0L || fireAtElapsed == 0L) return
-            // 剩余时间一律用单调时钟（elapsedRealtime）计算，墙钟会被 NTP 跳动
-            val remainingMs = fireAtElapsed - SystemClock.elapsedRealtime()
-            if (remainingMs <= 0L) return
-            updateCountdownNotification(remainingMs)
-            handler.postDelayed(this, if (remainingMs <= 15_000L) 1_000L else 10_000L)
-        }
-    }
-
     /**
-     * 使用事件入账有延迟（ColorOS 可滞后数秒~更久），10 秒的短轮次到点时
-     * 最近事件可能还没入账 → 一次性查询会漏掉整轮。
-     * 对策：轮次进行中每 2 秒滚动重算并缓存，到点时取「新鲜 ∨ 缓存」中更全的一份。
+     * 每 2 秒全量重算（双源：无障碍账本 ∨ queryEvents，见 UsageStatsHelper.totalsFor）。
+     * 全量重算本身就是单调的（使用在涨），不再需要旧版的 merge-max 缓存——
+     * 那套在查询空转时会把显示永久冻结在旧值（「剩 6 秒不动」的成因之一）。
      */
     private val statsPoller = object : Runnable {
         override fun run() {
             if (roundStart == 0L || scheduledRoundId == 0L) return
-            val totals = UsageStatsHelper.totalsFor(this@MonitorService, roundStart, System.currentTimeMillis())
-            statsCache = totals
-            if (RulesStore.rulesActive(this@MonitorService)) updateRulesNotification(totals)
-            checkPerAppRules(totals)
+            refreshStats()
+            checkPerAppRules(statsCache)
+            updateMonitorNotification(statsCache)
             handler.postDelayed(this, 2_000L)
         }
     }
 
-    /** 分应用规则：本轮内某应用累计使用 ≥ 生效阈值 → 全屏提醒（每应用每轮一次） */
+    private fun refreshStats() {
+        val totals = UsageStatsHelper.totalsFor(this@MonitorService, roundStart, roundStart, System.currentTimeMillis())
+        statsStale = if (totals == statsCache) statsStale + 1 else 0
+        statsCache = totals
+    }
+
+    /** 分应用：本轮累计 ≥ 阈值 → 弹一次。解锁后才重新计。 */
     private fun checkPerAppRules(totals: Map<String, Long>) {
         if (roundStart == 0L) return
+        if (overlayReminder.isShowing()) return
         if (System.currentTimeMillis() - roundStart < 3_000L) return
         for ((pkg, ms) in totals) {
             if (pkg in remindedApps) continue
@@ -121,12 +112,10 @@ class MonitorService : Service() {
                 pkg
             }
             android.util.Log.d("URFire", "perAppRule hit $label ms=$ms sec=$sec")
-            presentReminder("$label 用了不少", ms, mapOf(pkg to ms))
+            presentReminder(label, ms, totals)
             break
         }
     }
-
-    private val fireRunnable = Runnable { fire() }
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -142,6 +131,7 @@ class MonitorService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        ForegroundLedger.init(this)
         createChannels()
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_USER_PRESENT)
@@ -149,13 +139,9 @@ class MonitorService : Service() {
         }
         ContextCompat.registerReceiver(this, screenReceiver, filter, ContextCompat.RECEIVER_EXPORTED)
         receiverRegistered = true
-        val monitorNotif = buildMonitorNotification()
-        // Android 14 显式声明 specialUse 类型，避免 MissingForegroundServiceTypeException
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(NOTIF_MONITOR, monitorNotif, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-        } else {
-            startForeground(NOTIF_MONITOR, monitorNotif)
-        }
+        // 覆盖安装后清掉旧版第二条倒计时通知
+        NotificationManagerCompat.from(this).cancel(NOTIF_COUNTDOWN)
+        pushForeground(buildMonitorNotification(emptyMap()))
         addKeepAliveDot()
         Prefs.setRunning(this, true)
         Prefs.setLastHeartbeat(this, System.currentTimeMillis())
@@ -166,12 +152,12 @@ class MonitorService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START_ROUND -> startRound(intent.getLongExtra(EXTRA_INTERVAL_OVERRIDE, 0L))
+            ACTION_START_ROUND -> startRound()
             ACTION_CANCEL_ROUND -> cancelRound()
-            ACTION_FIRE_NOW -> {
-                // 精确闹钟叫醒：服务侧做去重，闹钟与 Handler 谁先到都只 fire 一次
-                handler.removeCallbacks(fireRunnable)
-                fire()
+            ACTION_FIRE_NOW -> pokeRules()
+            ACTION_REFRESH_DOT -> {
+                removeKeepAliveDot()
+                addKeepAliveDot()
             }
             ACTION_STOP_MONITOR -> {
                 userStop = true
@@ -185,14 +171,11 @@ class MonitorService : Service() {
     }
 
     override fun onDestroy() {
-        handler.removeCallbacks(fireRunnable)
         handler.removeCallbacks(heartbeatRunnable)
-        handler.removeCallbacks(countdownUpdater)
         handler.removeCallbacks(statsPoller)
         overlayReminder.close()
         removeKeepAliveDot()
-        // 通知无论如何都撤掉；本轮状态只在用户主动关闭时清，
-        // 系统回收服务（会走 onDestroy 再 sticky 重启）时保留，交给 recoverRoundIfNeeded 恢复
+        ForegroundLedger.endRound()
         val nm = NotificationManagerCompat.from(this)
         nm.cancel(NOTIF_COUNTDOWN)
         nm.cancel(NOTIF_ALARM)
@@ -207,135 +190,122 @@ class MonitorService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    /** 服务被系统杀死后重建（走不到 onDestroy）：恢复未到期的一轮，过期脏数据直接清理 */
+    /** 服务被杀后重建：屏幕仍亮则恢复本轮，否则丢掉。 */
     private fun recoverRoundIfNeeded() {
         val start = Prefs.roundStart(this)
-        if (start <= 0L) return
-        val remaining = effectiveIntervalSeconds() * 1000L - (System.currentTimeMillis() - start)
-        if (remaining > 0L) {
-            roundStart = start
-            scheduledRoundId = start
-            handler.postDelayed(fireRunnable, remaining)
-            showCountdownNotification(remaining)
-        } else if (-remaining <= 120_000L) {
-            // 精确闹钟刚叫醒、deadline 刚过（时序抖动在宽限内）：立即补 fire，别把这一轮吃掉
-            roundStart = start
-            scheduledRoundId = start
-            handler.post(fireRunnable)
-            handler.postDelayed(statsPoller, 2_000L)
-        } else {
-            // 过期太久（长时间死亡后的陈旧轮）：丢弃
-            Prefs.clearRound(this)
+        if (start <= 0L) {
+            updateMonitorNotification()
+            return
         }
+        val interactive = getSystemService(PowerManager::class.java)?.isInteractive == true
+        if (!interactive) {
+            Prefs.clearRound(this)
+            updateMonitorNotification()
+            return
+        }
+        roundStart = start
+        scheduledRoundId = start
+        ForegroundLedger.startRound(start, SystemClock.elapsedRealtime())
+        handler.removeCallbacks(statsPoller)
+        handler.post(statsPoller)
+        pokeRules()
     }
 
-    /** 浮层「确定 · 再来一轮」回调 */
+    /** 「知道了」：关掉浮层，本轮其它应用继续计时。 */
     fun onOverlayConfirm() {
         overlayReminder.close()
-        startRound()
+        updateMonitorNotification(statsCache)
     }
 
-    /** 浮层「取消 · 停止」/返回键回调 */
+    /** 「结束本轮」：清掉本轮，等下次解锁。 */
     fun onOverlayCancel() {
         overlayReminder.close()
         cancelRound()
     }
 
-    private fun startRound(overrideSeconds: Long = 0L) {
+    /** 解锁 = 每个应用重新计时。只提醒，不限制。 */
+    private fun startRound() {
         roundStart = System.currentTimeMillis()
         scheduledRoundId = roundStart
         remindedApps.clear()
+        statsStale = 0
         Prefs.setRoundStart(this, roundStart)
-        Prefs.setRoundIntervalOverride(this, if (overrideSeconds > 0) overrideSeconds else 0L)
-        handler.removeCallbacks(fireRunnable)
-        // 清掉上一轮可能残留的到点通知
+        Prefs.setRoundIntervalOverride(this, 0L)
         NotificationManagerCompat.from(this).cancel(NOTIF_ALARM)
-        val seconds = if (overrideSeconds > 0) overrideSeconds else Prefs.intervalSeconds(this)
-        val intervalMs = seconds * 1000L
-        handler.postDelayed(fireRunnable, intervalMs)
         statsCache = emptyMap()
+        ForegroundLedger.startRound(roundStart, SystemClock.elapsedRealtime())
         handler.removeCallbacks(statsPoller)
-        handler.postDelayed(statsPoller, 2_000L)
+        handler.post(statsPoller)
+        updateMonitorNotification(emptyMap())
+        scheduleNextRuleAlarm(emptyMap())
+    }
 
-        // 规则模式（设置了分应用规则）下，全局倒计时让位：到点弹窗由规则引擎驱动，
-        // 通知栏直接显示每个规则应用的剩余倒计时
-        if (overrideSeconds <= 0 && RulesStore.rulesActive(this)) {
-            updateRulesNotification(UsageStatsHelper.totalsFor(this, roundStart, System.currentTimeMillis()))
+    /** 精确闹钟叫醒后核对规则（进程被冻时靠它破冻）。 */
+    private fun pokeRules() {
+        if (roundStart == 0L) {
+            updateMonitorNotification()
             return
         }
+        refreshStats()
+        checkPerAppRules(statsCache)
+        updateMonitorNotification(statsCache)
+        scheduleNextRuleAlarm(statsCache)
+    }
 
-        // 宏软件同款双保险：setAlarmClock 被系统视为真实闹钟，ColorOS/MIUI 不做闹钟对齐延迟，
-        // 且无需 SCHEDULE_EXACT_ALARM 权限；进程被速冻时由系统闹钟破冻叫醒到点
-        val am = getSystemService(AlarmManager::class.java)
-        if (am != null) {
-            val fireAt = roundStart + intervalMs
+    /**
+     * 本轮内按下一次闹钟：已在用的应用按剩余时间，否则最多 60 秒巡检一次。
+     * 进程活着时 2 秒轮询已经够准，闹钟只防冻结。
+     */
+    private fun scheduleNextRuleAlarm(totals: Map<String, Long>) {
+        if (roundStart == 0L) {
+            getSystemService(AlarmManager::class.java)?.cancel(fireAlarmPending())
+            return
+        }
+        var delay = 60_000L
+        for (r in RulesStore.overrides(this)) {
+            if (r.pkg in remindedApps) continue
+            val used = totals[r.pkg] ?: 0L
+            if (used <= 0L) continue
+            val remaining = r.thresholdSec * 1000L - used
+            if (remaining > 0L) delay = minOf(delay, remaining)
+        }
+        delay = delay.coerceIn(2_000L, 60_000L)
+        val am = getSystemService(AlarmManager::class.java) ?: return
+        val fireAt = System.currentTimeMillis() + delay
+        val pending = fireAlarmPending()
+        try {
             val showIntent = PendingIntent.getActivity(
                 this, 4, Intent(this, MainActivity::class.java),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            am.setAlarmClock(AlarmManager.AlarmClockInfo(fireAt, showIntent), fireAlarmPending())
+            am.setAlarmClock(AlarmManager.AlarmClockInfo(fireAt, showIntent), pending)
+        } catch (_: SecurityException) {
+            try {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireAt, pending)
+            } catch (_: Exception) {
+            }
         }
-        showCountdownNotification(intervalMs)
-    }
-
-    /** 规则模式下的通知：逐行显示每个规则应用的剩余倒计时（每 2 秒随轮询刷新） */
-    private fun updateRulesNotification(totals: Map<String, Long>) {
-        val rules = RulesStore.overrides(this)
-        val sb = StringBuilder()
-        for (r in rules) {
-            val used = totals[r.pkg] ?: 0L
-            val remaining = (r.thresholdSec * 1000L - used).coerceAtLeast(0L)
-            sb.append("${r.label} 剩余 ${UsageStatsHelper.formatDuration(remaining)}\n")
-        }
-        if (rules.isEmpty() && RulesStore.defaultSec(this) > 0) {
-            sb.append("全局默认 · ${UsageStatsHelper.formatDuration(RulesStore.defaultSec(this) * 1000L)} 后提醒\n")
-        }
-        if (sb.isEmpty()) return
-
-        val stopIntent = PendingIntent.getService(
-            this, 1,
-            Intent(this, MonitorService::class.java).setAction(ACTION_CANCEL_ROUND),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val views = RemoteViews(packageName, R.layout.notification_countdown)
-        views.setTextViewText(R.id.notifTime, sb.toString().trim())
-        views.setTextViewText(R.id.notifHint, getString(R.string.countdown_body))
-        val notification = NotificationCompat.Builder(this, CH_COUNTDOWN)
-            .setSmallIcon(R.drawable.ic_stat_timer)
-            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
-            .setCustomContentView(views)
-            .setCustomBigContentView(views)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setContentIntent(stopIntent)
-            .addAction(0, getString(R.string.btn_stop_short), stopIntent)
-            .build()
-        safeNotify(NOTIF_COUNTDOWN, notification)
-    }
-
-    /** 本轮实际间隔：诊断测试的临时覆盖优先 */
-    private fun effectiveIntervalSeconds(): Long {
-        val ov = Prefs.roundIntervalOverride(this)
-        return if (ov > 0) ov else Prefs.intervalSeconds(this)
     }
 
     private fun cancelRound() {
-        handler.removeCallbacks(fireRunnable)
-        handler.removeCallbacks(countdownUpdater)
+        val snapshot = statsCache
+        val hadRound = roundStart > 0L
         handler.removeCallbacks(statsPoller)
         statsCache = emptyMap()
+        statsStale = 0
         overlayReminder.close()
         roundStart = 0L
         scheduledRoundId = 0L
-        fireAtWall = 0L
-        fireAtElapsed = 0L
+        ForegroundLedger.endRound()
         Prefs.clearRound(this)
         Prefs.setRoundIntervalOverride(this, 0L)
-        if (statsCache.isNotEmpty()) StatsStore.addAppUsage(this, statsCache)
+        if (snapshot.isNotEmpty()) StatsStore.addAppUsage(this, snapshot)
+        if (hadRound) StatsStore.onRoundEnd(this)
         getSystemService(AlarmManager::class.java)?.cancel(fireAlarmPending())
         val nm = NotificationManagerCompat.from(this)
         nm.cancel(NOTIF_COUNTDOWN)
         nm.cancel(NOTIF_ALARM)
+        if (Prefs.isRunning(this) && !userStop) updateMonitorNotification()
     }
 
     private fun fireAlarmPending(): PendingIntent = PendingIntent.getBroadcast(
@@ -365,20 +335,28 @@ class MonitorService : Service() {
     }
 
     /**
-     * 保活小浮标（MacroDroid 浮字的缩小版）：监控期间常驻一颗半透明小圆点。
-     * 挂着「可见窗口」的进程通常不进 ROM 速冻名单——这是防冻结最省事的形态级手段。
-     * 不可触摸、不抢焦点，仅 12dp，位于屏幕左上角。
+     * 防冻浮标：ColorOS 把「有可见窗口」的进程排除在速冻之外。
+     * v0.8.2 改成 1px 全透明后统计空转复发，v0.9.0 默认回 4dp 低透明微点；
+     * 嫌碍眼可在设置开「隐蔽模式」（回到 1px 全透明，保活效果自担）。
      */
     private fun addKeepAliveDot() {
         if (keepAliveDot != null) return
         if (!Settings.canDrawOverlays(this)) return
         val wm = getSystemService(WindowManager::class.java) ?: return
-        val v = View(this)
-        v.setBackgroundResource(R.drawable.keepalive_dot)
         val density = resources.displayMetrics.density
+        val stealth = Prefs.keepaliveStealth(this)
+        val size = if (stealth) 1 else (4 * density).toInt().coerceAtLeast(1)
+        val v = View(this)
+        if (stealth) {
+            v.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            v.alpha = 0f
+        } else {
+            v.setBackgroundResource(R.drawable.keepalive_dot)
+            v.alpha = 0.15f
+        }
         val params = WindowManager.LayoutParams(
-            (12 * density).toInt(),
-            (12 * density).toInt(),
+            size,
+            size,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
@@ -386,8 +364,8 @@ class MonitorService : Service() {
             PixelFormat.TRANSLUCENT
         )
         params.gravity = Gravity.TOP or Gravity.START
-        params.x = (6 * density).toInt()
-        params.y = (6 * density).toInt()
+        params.x = 0
+        params.y = 0
         try {
             wm.addView(v, params)
             keepAliveDot = v
@@ -404,44 +382,11 @@ class MonitorService : Service() {
         }
     }
 
-    private fun fire() {
-        // 去重：Handler 与精确闹钟谁先到都只 fire 一次
-        if (roundStart == 0L || roundStart != scheduledRoundId) return
-        scheduledRoundId = 0L
-        val now = System.currentTimeMillis()
-        // 迟到检测：到点回调比计划晚 15 秒以上 = 进程被 ROM 冻结过（真机诊断关键信号）
-        val lateMs = now - (roundStart + effectiveIntervalSeconds() * 1000L)
-        pendingLateTag =
-            if (lateMs > 15_000L) " · 迟到${lateMs / 1000L}秒（后台被冻结过）" else ""
-        val elapsed = now - roundStart
-        // 到点统计：新鲜查询 ∨ 轮询缓存按包取最大（对抗事件入账延迟）
-        val fresh = UsageStatsHelper.totalsFor(this, roundStart, now)
-        val merged = HashMap<String, Long>()
-        for ((k, v) in fresh) merged[k] = maxOf(v, statsCache[k] ?: 0L)
-        for ((k, v) in statsCache) merged.putIfAbsent(k, v)
-        statsCache = emptyMap()
-        handler.removeCallbacks(statsPoller)
-        Prefs.clearRound(this)
-        Prefs.setRoundIntervalOverride(this, 0L)
-        Prefs.setLastFireAt(this, now)
-
-        // 统计累计：轮次 +1，各应用本轮时长入账
-        StatsStore.onRoundEnd(this)
-        StatsStore.addAppUsage(this, merged)
-
-        NotificationManagerCompat.from(this).cancel(NOTIF_COUNTDOWN)
-        handler.removeCallbacks(countdownUpdater)
-        presentReminder(getString(R.string.time_up), elapsed, merged)
-    }
-
-    /** 统一提醒呈现链：悬浮窗浮层 → 页面兜底 → FSI 通知。全局到点与分应用触发共用。 */
     private fun presentReminder(heading: String, elapsed: Long, totals: Map<String, Long>) {
         pendingElapsed = elapsed
         pendingUsage = UsageStatsHelper.formatTop(totals, this)
         pendingHeading = heading
 
-        // ── 主路径：悬浮窗全屏浮层。挂载成功≠显示成功（ColorOS 会静默吞窗），
-        //    OverlayReminder 500ms 后异步验证，成败经 onOverlayShown/onOverlayFailed 回调 ──
         val overlayGranted = Settings.canDrawOverlays(this)
         android.util.Log.d("URFire", "present heading=$heading elapsed=$elapsed overlayGranted=$overlayGranted")
         if (overlayGranted && overlayReminder.show(heading, elapsed, pendingUsage)) {
@@ -452,7 +397,6 @@ class MonitorService : Service() {
         runFallback()
     }
 
-    /** 兜底链：直接起页面（多数 ROM 允许，MIUI 需「后台弹出界面」）→ FSI 通知 */
     private fun runFallback() {
         val content = Intent(this, ReminderActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -465,24 +409,21 @@ class MonitorService : Service() {
             markFire(Prefs.lastFireResult(this) + " · 页面兜底被拦(" + e.javaClass.simpleName + ")")
         }
 
-        // FSI 高优通知（亮屏解锁态是横幅，灭屏/锁屏才真全屏）
         val fullScreenPending = PendingIntent.getActivity(
             this, 0, content,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val builder = NotificationCompat.Builder(this, CH_ALARM)
             .setSmallIcon(R.drawable.ic_stat_timer)
-            .setContentTitle(getString(R.string.time_up))
+            .setContentTitle(pendingHeading.ifEmpty { getString(R.string.time_up) })
             .setContentText(getString(R.string.tap_to_view))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
-            // 亮屏解锁态 FSI 会降级成横幅，点按横幅走 contentIntent 进提醒页
             .setContentIntent(fullScreenPending)
             .setFullScreenIntent(fullScreenPending, true)
 
         if (!Settings.canDrawOverlays(this)) {
-            // 全局弹窗的唯一合法前提就是悬浮窗权限：在到点通知里给一键修复入口
             val fixPending = PendingIntent.getActivity(
                 this, 2,
                 Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")),
@@ -495,18 +436,16 @@ class MonitorService : Service() {
             Intent(this, MonitorService::class.java).setAction(ACTION_CANCEL_ROUND),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        builder.addAction(0, getString(R.string.btn_stop_short), stopPending)
+        builder.addAction(0, getString(R.string.btn_end_round), stopPending)
         safeNotify(NOTIF_ALARM, builder.build())
     }
 
-    /** 浮层异步验证通过：真·全局浮层 */
     fun onOverlayShown() {
         if (!Prefs.isRunning(this)) return
         android.util.Log.d("URFire", "onOverlayShown")
         markFire("全局浮层 ✓" + pendingLateTag)
     }
 
-    /** 浮层异步验证失败（含不可聚焦重试后）：走兜底链 */
     fun onOverlayFailed(reason: String) {
         if (!Prefs.isRunning(this)) return
         android.util.Log.d("URFire", "onOverlayFailed reason=$reason")
@@ -514,59 +453,110 @@ class MonitorService : Service() {
         runFallback()
     }
 
-    /** 把到点链路的实际走向记到主界面（自诊断：用户无需 adb 即可反馈卡在哪一步） */
     private fun markFire(result: String) {
         val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
         Prefs.setLastFire(this, "$result · $time")
     }
 
-    /** 倒计时通知：RemoteViews 走字 + 周期刷新的剩余时间/绝对到点时刻（ROM 不渲染走字控件时仍可见） */
-    private fun showCountdownNotification(intervalMs: Long) {
-        fireAtWall = System.currentTimeMillis() + intervalMs
-        fireAtElapsed = SystemClock.elapsedRealtime() + intervalMs
-        handler.removeCallbacks(countdownUpdater)
-        handler.postDelayed(countdownUpdater, 1_000L)
-        updateCountdownNotification(intervalMs)
+    private fun updateMonitorNotification(totals: Map<String, Long> = emptyMap()) {
+        pushForeground(buildMonitorNotification(totals))
     }
 
-    private fun updateCountdownNotification(remainingMs: Long) {
+    /** 前台服务只有这一条通知：等待解锁，或列出每个应用剩余时间。 */
+    private fun buildMonitorNotification(totals: Map<String, Long>): Notification {
+        val openIntent = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val builder = NotificationCompat.Builder(this, CH_MONITOR)
+            .setSmallIcon(R.drawable.ic_stat_timer)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .setContentIntent(openIntent)
+
+        val rules = RulesStore.overrides(this)
+        if (roundStart == 0L) {
+            val text = if (rules.isEmpty()) {
+                getString(R.string.monitor_need_apps)
+            } else {
+                getString(R.string.monitor_waiting)
+            }
+            return builder
+                .setContentTitle(getString(R.string.app_name))
+                .setContentText(text)
+                .build()
+        }
+
+        var lines = ArrayList<String>()
+        for (r in rules) {
+            if (r.pkg in remindedApps) {
+                lines.add(getString(R.string.notif_reminded, r.label))
+            } else {
+                val used = totals[r.pkg] ?: 0L
+                val remaining = (r.thresholdSec * 1000L - used).coerceAtLeast(0L)
+                lines.add(getString(R.string.notif_left, r.label, UsageStatsHelper.formatDurationShort(remaining)))
+            }
+        }
+        var fixUsage = false
+        var fixA11y = false
+        val a11yEnabledSomewhere = KeepAliveAccessibilityService.isEnabled(this)
+        val a11yAlive = ForegroundLedger.connected
+        if (statsStale >= STALE_LIMIT || !UsageStatsHelper.hasUsageAccess(this) || (a11yEnabledSomewhere && !a11yAlive)) {
+            // 统计链路受损：usage 被挂起 / 无障碍断绑 / 两源全停。「时间不减」的前兆，必须可见。
+            lines = ArrayList(lines).apply { add(0, getString(R.string.notif_stats_warn)) }
+            fixUsage = !UsageStatsHelper.hasUsageAccess(this)
+            fixA11y = a11yEnabledSomewhere && !a11yAlive
+        }
+        val text = when {
+            lines.isEmpty() -> getString(R.string.monitor_need_apps)
+            else -> lines.first()
+        }
+        builder.setContentTitle(getString(R.string.app_name)).setContentText(text)
+        if (lines.size > 1) {
+            val inbox = NotificationCompat.InboxStyle()
+                .setBigContentTitle(getString(R.string.notif_remaining))
+            for (line in lines.take(7)) inbox.addLine(line)
+            if (lines.size > 7) inbox.addLine(getString(R.string.notif_more, lines.size - 7))
+            builder.setStyle(inbox)
+        } else if (lines.size == 1) {
+            builder.setStyle(NotificationCompat.BigTextStyle().bigText(lines[0]))
+        }
+        if (fixUsage) {
+            val fixPending = PendingIntent.getActivity(
+                this, 5,
+                Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(0, getString(R.string.notif_fix_stats), fixPending)
+        }
+        if (fixA11y) {
+            val fixPending = PendingIntent.getActivity(
+                this, 6,
+                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(0, getString(R.string.notif_fix_a11y), fixPending)
+        }
         val stopIntent = PendingIntent.getService(
             this, 1,
             Intent(this, MonitorService::class.java).setAction(ACTION_CANCEL_ROUND),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val views = RemoteViews(packageName, R.layout.notification_countdown)
-        val untilText = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(fireAtWall))
-        views.setTextViewText(
-            R.id.notifTime,
-            "剩余${UsageStatsHelper.formatDuration(remainingMs)} · $untilText 到点"
-        )
-        views.setTextViewText(R.id.notifHint, getString(R.string.countdown_body))
-        val notification = NotificationCompat.Builder(this, CH_COUNTDOWN)
-            .setSmallIcon(R.drawable.ic_stat_timer)
-            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
-            .setCustomContentView(views)
-            .setCustomBigContentView(views)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setContentIntent(stopIntent)
-            .addAction(0, getString(R.string.btn_stop_short), stopIntent)
-            .build()
-        safeNotify(NOTIF_COUNTDOWN, notification)
+        builder.addAction(0, getString(R.string.btn_end_round), stopIntent)
+        return builder.build()
     }
 
-    private fun buildMonitorNotification(): Notification {
-        val openIntent = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        return NotificationCompat.Builder(this, CH_MONITOR)
-            .setSmallIcon(R.drawable.ic_stat_timer)
-            .setContentTitle(getString(R.string.app_name))
-            .setContentText(getString(R.string.monitor_hint))
-            .setOngoing(true)
-            .setContentIntent(openIntent)
-            .build()
+    private fun pushForeground(notification: Notification) {
+        if (Build.VERSION.SDK_INT >= 34) {
+            startForeground(
+                NOTIF_MONITOR,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIF_MONITOR, notification)
+        }
     }
 
     private fun safeNotify(id: Int, notification: Notification) {
@@ -584,9 +574,6 @@ class MonitorService : Service() {
         val nm = getSystemService(NotificationManager::class.java) ?: return
         nm.createNotificationChannel(
             NotificationChannel(CH_MONITOR, getString(R.string.ch_monitor), NotificationManager.IMPORTANCE_LOW)
-        )
-        nm.createNotificationChannel(
-            NotificationChannel(CH_COUNTDOWN, getString(R.string.ch_countdown), NotificationManager.IMPORTANCE_LOW)
         )
         val alarmChannel = NotificationChannel(CH_ALARM, getString(R.string.ch_alarm), NotificationManager.IMPORTANCE_HIGH)
         alarmChannel.enableVibration(true)

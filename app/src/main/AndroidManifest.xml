@@ -55,8 +55,9 @@
         </service>
 
         <activity
-            android:name=".RulesActivity"
-            android:exported="false" />
+            android:name=".AppPickerActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".SettingsActivity"

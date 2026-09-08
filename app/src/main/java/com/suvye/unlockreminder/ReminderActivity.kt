@@ -25,20 +25,12 @@ class ReminderActivity : AppCompatActivity() {
         setTurnScreenOn(true)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        findViewById<Button>(R.id.btnConfirm).setOnClickListener {
-            if (Prefs.isRunning(this)) {
-                startService(
-                    Intent(this, MonitorService::class.java)
-                        .setAction(MonitorService.ACTION_START_ROUND)
-                )
-            }
-            finish()
-        }
+        findViewById<Button>(R.id.btnConfirm).setOnClickListener { finish() }
         findViewById<Button>(R.id.btnCancel).setOnClickListener { cancelRound() }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                cancelRound()
+                finish()
             }
         })
 

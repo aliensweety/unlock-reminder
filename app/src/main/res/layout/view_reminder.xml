@@ -14,8 +14,8 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="52dp"
         android:text="@string/time_up"
-        android:textColor="#FFFFFF"
-        android:textSize="42sp"
+        android:textColor="@color/reminder_title"
+        android:textSize="34sp"
         android:textStyle="bold" />
 
     <TextView
@@ -40,7 +40,7 @@
             android:layout_height="wrap_content"
             android:lineSpacingExtra="6dp"
             android:padding="20dp"
-            android:textColor="#B9B4C4"
+            android:textColor="@color/reminder_body"
             android:textSize="15sp" />
     </LinearLayout>
 
@@ -62,7 +62,7 @@
             android:layout_marginEnd="6dp"
             android:layout_weight="1"
             android:text="@string/btn_cancel"
-            android:textColor="#E6E2EC"
+            android:textColor="@color/reminder_title"
             app:strokeColor="@color/reminder_outline" />
 
         <Button

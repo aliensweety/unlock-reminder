@@ -11,6 +11,7 @@ object Prefs {
     private const val KEY_LAST_FIRE_AT = "last_fire_at"
     private const val KEY_INTERVAL_OVERRIDE = "interval_override"
     private const val KEY_HEARTBEAT = "service_heartbeat"
+    private const val KEY_STEALTH_DOT = "keepalive_stealth_dot"
 
     const val DEFAULT_INTERVAL_SECONDS = 10L
     const val MIN_INTERVAL_SECONDS = 5L
@@ -66,5 +67,12 @@ object Prefs {
 
     fun setLastHeartbeat(ctx: Context, time: Long) {
         sp(ctx).edit().putLong(KEY_HEARTBEAT, time).apply()
+    }
+
+    /** 防冻浮标隐蔽模式：1px 全透明。默认关（4dp 微点），开了保活效果自担 */
+    fun keepaliveStealth(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_STEALTH_DOT, false)
+
+    fun setKeepaliveStealth(ctx: Context, value: Boolean) {
+        sp(ctx).edit().putBoolean(KEY_STEALTH_DOT, value).apply()
     }
 }

@@ -2,16 +2,47 @@
 <resources>
     <style name="Theme.App" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/brand_primary</item>
-        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorOnPrimary">@color/on_primary</item>
         <item name="colorPrimaryContainer">@color/brand_container</item>
-        <item name="colorOnPrimaryContainer">#10125C</item>
+        <item name="colorOnPrimaryContainer">@color/on_primary_container</item>
+        <item name="colorSecondary">@color/brand_primary</item>
+        <item name="colorOnSecondary">@color/on_primary</item>
+        <item name="colorSecondaryContainer">@color/secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/on_secondary_container</item>
+        <item name="colorTertiary">@color/brand_primary</item>
+        <item name="colorOnTertiary">@color/on_primary</item>
+        <item name="colorTertiaryContainer">@color/brand_container</item>
+        <item name="colorOnTertiaryContainer">@color/on_primary_container</item>
+        <item name="android:colorBackground">@color/page_bg</item>
+        <item name="colorOnBackground">@color/ink</item>
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorOnSurface">@color/ink</item>
+        <item name="colorSurfaceVariant">@color/surface_container</item>
+        <item name="colorOnSurfaceVariant">@color/ink_muted</item>
+        <item name="colorSurfaceContainer">@color/surface_container</item>
+        <item name="colorSurfaceContainerLow">@color/surface</item>
+        <item name="colorSurfaceContainerHigh">@color/surface_container</item>
+        <item name="colorSurfaceContainerHighest">@color/surface_container</item>
+        <item name="colorSurfaceContainerLowest">@color/page_bg</item>
+        <item name="colorOutline">@color/outline</item>
+        <item name="colorOutlineVariant">@color/outline</item>
+        <item name="colorError">@color/error</item>
+        <item name="colorAccent">@color/brand_primary</item>
+        <item name="colorControlActivated">@color/brand_primary</item>
+        <item name="android:statusBarColor">@color/page_bg</item>
+        <item name="android:navigationBarColor">@color/page_bg</item>
+        <item name="android:windowBackground">@color/page_bg</item>
+        <item name="android:windowLightStatusBar">@bool/window_light_status</item>
+        <item name="android:windowLightNavigationBar">@bool/window_light_status</item>
+        <item name="android:forceDarkAllowed">false</item>
     </style>
 
-    <style name="Theme.App.Reminder">
+    <style name="Theme.App.Reminder" parent="Theme.App">
         <item name="android:windowBackground">@color/reminder_background</item>
         <item name="android:statusBarColor">@color/reminder_background</item>
         <item name="android:navigationBarColor">@color/reminder_background</item>
         <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
 
     <style name="PermButton" parent="Widget.Material3.Button.TonalButton">

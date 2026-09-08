@@ -5,26 +5,29 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * 分应用提醒规则（默认+覆盖模型）：
- * - defaultSec：全局默认生效时长（秒），0 = 未列入覆盖列表的应用不提醒
- * - overrides：按应用的独立时长（秒），与默认互斥生效——存在即覆盖默认
- * 监控语义：本轮内某应用累计使用 ≥ 生效时长 → 全屏提醒（每应用每轮一次）
+ * 分应用提醒规则：只按「选中的应用 + 各自时长」生效。
+ * 没有全局默认；未列入的应用不提醒。
+ * 语义：解锁后该应用累计使用 ≥ 时长 → 弹一次；下次解锁重新计。
  */
 object RulesStore {
     data class AppRule(val pkg: String, val label: String, val thresholdSec: Long)
 
+    val PRESETS = listOf(
+        30L to "30 秒",
+        60L to "1 分钟",
+        180L to "3 分钟",
+        300L to "5 分钟",
+        600L to "10 分钟",
+        900L to "15 分钟",
+        1800L to "30 分钟",
+        3600L to "1 小时"
+    )
+    const val DEFAULT_THRESHOLD_SEC = 600L
+
     private const val FILE = "rules"
-    private const val KEY_DEFAULT = "default_sec"
     private const val KEY_OVERRIDES = "overrides_json"
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
-
-    /** 全局默认生效时长（秒），0 = 默认不提醒 */
-    fun defaultSec(ctx: Context): Long = sp(ctx).getLong(KEY_DEFAULT, 0L)
-
-    fun setDefaultSec(ctx: Context, sec: Long) {
-        sp(ctx).edit().putLong(KEY_DEFAULT, sec).apply()
-    }
 
     fun overrides(ctx: Context): List<AppRule> {
         val json = sp(ctx).getString(KEY_OVERRIDES, null) ?: return emptyList()
@@ -58,13 +61,14 @@ object RulesStore {
         saveOverrides(ctx, overrides(ctx).filter { it.pkg != pkg })
     }
 
-    /** 某应用的生效阈值（秒），0 = 不提醒 */
-    fun effectiveSec(ctx: Context, pkg: String): Long {
-        overrides(ctx).firstOrNull { it.pkg == pkg }?.let { return it.thresholdSec }
-        return defaultSec(ctx)
-    }
+    /** 某应用的生效阈值（秒），0 = 不在列表里，不提醒 */
+    fun effectiveSec(ctx: Context, pkg: String): Long =
+        overrides(ctx).firstOrNull { it.pkg == pkg }?.thresholdSec ?: 0L
 
-    /** 规则模式开启中（默认>0 或存在覆盖行）：此时全局倒计时让位给分应用规则 */
-    fun rulesActive(ctx: Context): Boolean =
-        defaultSec(ctx) > 0 || overrides(ctx).isNotEmpty()
+    fun rulesActive(ctx: Context): Boolean = overrides(ctx).isNotEmpty()
+
+    fun formatThreshold(sec: Long): String {
+        PRESETS.firstOrNull { it.first == sec }?.let { return it.second }
+        return if (sec % 60L == 0L) "${sec / 60L} 分钟" else "${sec} 秒"
+    }
 }

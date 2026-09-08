@@ -26,6 +26,8 @@ class OverlayReminder(private val host: MonitorService) {
     private val handler = Handler(Looper.getMainLooper())
     private val verifyRunnable = Runnable { verify() }
 
+    fun isShowing(): Boolean = view != null
+
     fun show(heading: String, elapsedMs: Long, usageList: List<String>): Boolean {
         if (view != null) return true
         this.heading = heading
@@ -58,7 +60,7 @@ class OverlayReminder(private val host: MonitorService) {
             v.requestFocus()
             v.setOnKeyListener { _, keyCode, event ->
                 if (event.action == KeyEvent.ACTION_UP && keyCode == KeyEvent.KEYCODE_BACK) {
-                    host.onOverlayCancel()
+                    host.onOverlayConfirm()
                     true
                 } else {
                     false

@@ -1,6 +1,8 @@
 package com.suvye.unlockreminder
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -8,32 +10,28 @@ import android.os.Looper
 import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
-import android.widget.Button
+import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.materialswitch.MaterialSwitch
 
-/** 首页 = 仪表盘：状态、开关、今日/累计数字卡、应用时长条形榜、两个入口。 */
+/** 首页 = 产品本身：开关 + 要提醒的应用列表（图标 / 剩余 / 时长）。 */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var statusText: TextView
     private lateinit var bannerText: TextView
-    private lateinit var fireResultText: TextView
     private lateinit var switchMonitor: MaterialSwitch
-    private lateinit var kpiUnlocks: TextView
-    private lateinit var kpiRounds: TextView
-    private lateinit var kpiReminders: TextView
-    private lateinit var kpiUnlocksToday: TextView
-    private lateinit var kpiRoundsToday: TextView
-    private lateinit var kpiRemindersToday: TextView
-    private lateinit var topAppsContainer: LinearLayout
+    private lateinit var rulesContainer: LinearLayout
+    private lateinit var rulesEmpty: TextView
 
     private val handler = Handler(Looper.getMainLooper())
     private var suppressSwitch = false
+    private var lastRuleKey = ""
 
     private val ticker = object : Runnable {
         override fun run() {
@@ -48,46 +46,47 @@ class MainActivity : AppCompatActivity() {
 
         statusText = findViewById(R.id.statusText)
         bannerText = findViewById(R.id.bannerText)
-        fireResultText = findViewById(R.id.fireResultText)
         switchMonitor = findViewById(R.id.switchMonitor)
-        kpiUnlocks = findViewById(R.id.kpiUnlocks)
-        kpiRounds = findViewById(R.id.kpiRounds)
-        kpiReminders = findViewById(R.id.kpiReminders)
-        kpiUnlocksToday = findViewById(R.id.kpiUnlocksToday)
-        kpiRoundsToday = findViewById(R.id.kpiRoundsToday)
-        kpiRemindersToday = findViewById(R.id.kpiRemindersToday)
-        topAppsContainer = findViewById(R.id.topAppsContainer)
+        rulesContainer = findViewById(R.id.rulesContainer)
+        rulesEmpty = findViewById(R.id.rulesEmpty)
 
         bannerText.setOnClickListener { startActivity(Intent(this, WizardActivity::class.java)) }
-
-        findViewById<Button>(R.id.btnRules).setOnClickListener {
-            startActivity(Intent(this, RulesActivity::class.java))
-        }
-        findViewById<Button>(R.id.btnSettings).setOnClickListener {
+        findViewById<View>(R.id.btnSettings).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
+        }
+        findViewById<View>(R.id.btnAddApp).setOnClickListener {
+            startActivity(Intent(this, AppPickerActivity::class.java))
         }
 
         switchMonitor.setOnCheckedChangeListener { _, checked ->
             if (suppressSwitch) return@setOnCheckedChangeListener
             if (checked) {
+                if (!RulesStore.rulesActive(this)) {
+                    suppressSwitch = true
+                    switchMonitor.isChecked = false
+                    suppressSwitch = false
+                    Toast.makeText(this, getString(R.string.toast_need_apps), Toast.LENGTH_SHORT).show()
+                    startActivity(Intent(this, AppPickerActivity::class.java))
+                    return@setOnCheckedChangeListener
+                }
                 ContextCompat.startForegroundService(this, Intent(this, MonitorService::class.java))
-                Toast.makeText(this, "监控已开启，锁屏再解锁即开始倒计时", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.toast_monitor_on), Toast.LENGTH_SHORT).show()
             } else {
                 startService(
                     Intent(this, MonitorService::class.java)
                         .setAction(MonitorService.ACTION_STOP_MONITOR)
                 )
-                Toast.makeText(this, "监控已关闭", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.toast_monitor_off), Toast.LENGTH_SHORT).show()
             }
         }
     }
 
     override fun onResume() {
         super.onResume()
-        // 服务健康兜底：开关应开着但服务被杀（START_STICKY 尚未拉起）时立即重建
         if (Prefs.isRunning(this)) {
             ContextCompat.startForegroundService(this, Intent(this, MonitorService::class.java))
         }
+        renderRules(force = true)
         refreshAll()
         handler.post(ticker)
     }
@@ -100,70 +99,166 @@ class MainActivity : AppCompatActivity() {
     private fun refreshAll() {
         val running = Prefs.isRunning(this)
         val roundStart = Prefs.roundStart(this)
+        val ruleCount = RulesStore.overrides(this).size
 
         statusText.text = when {
-            running && roundStart > 0 && RulesStore.rulesActive(this) -> "分应用提醒监控中 · 规则触发时弹出"
-            running && roundStart > 0 -> {
-                val ov = Prefs.roundIntervalOverride(this)
-                val intervalMs = (if (ov > 0) ov else Prefs.intervalSeconds(this)) * 1000
-                val remaining = intervalMs - (System.currentTimeMillis() - roundStart)
-                if (remaining > 0) "倒计时中 · 剩余 ${remaining / 1000 + 1} 秒" else "到点提醒中…"
+            !running -> getString(R.string.status_stopped)
+            ruleCount == 0 -> getString(R.string.status_need_apps)
+            roundStart > 0 -> {
+                val elapsed = (System.currentTimeMillis() - roundStart).coerceAtLeast(0L)
+                getString(R.string.status_round, UsageStatsHelper.formatDurationShort(elapsed))
             }
-            running -> "监控中 · 等待下次解锁"
-            else -> "已停止 · 打开上方开关开始使用"
+            else -> getString(R.string.status_waiting)
         }
 
-        bannerText.visibility =
-            if (running && !Settings.canDrawOverlays(this)) View.VISIBLE else View.GONE
-
-        val last = Prefs.lastFireResult(this)
-        fireResultText.visibility = if (last.isEmpty()) View.GONE else View.VISIBLE
-        fireResultText.text = "上次到点：$last"
+        bannerText.visibility = if (needsSetup()) View.VISIBLE else View.GONE
 
         suppressSwitch = true
         switchMonitor.isChecked = running
         suppressSwitch = false
 
-        kpiUnlocks.text = StatsStore.unlocks(this).toString()
-        kpiRounds.text = StatsStore.rounds(this).toString()
-        kpiReminders.text = StatsStore.reminders(this).toString()
-        kpiUnlocksToday.text = "今日 ${StatsStore.todayUnlocks(this)}"
-        kpiRoundsToday.text = "今日 ${StatsStore.todayRounds(this)}"
-        kpiRemindersToday.text = "今日 ${StatsStore.todayReminders(this)}"
-
-        refreshTopApps()
+        renderRules(force = false)
+        updateLiveRemaining()
     }
 
-    private fun refreshTopApps() {
-        val apps = StatsStore.topApps(this, limit = 6)
-        topAppsContainer.removeAllViews()
-        if (apps.isEmpty()) {
-            val empty = TextView(this).apply {
-                text = getString(R.string.topapps_empty)
-                textSize = 13f
-                setTextColor(ContextCompat.getColor(this@MainActivity, R.color.reminder_text_secondary))
-            }
-            topAppsContainer.addView(empty)
-            return
-        }
-        val maxMs = apps.first().second.coerceAtLeast(1L)
+    private fun needsSetup(): Boolean {
+        val overlay = Settings.canDrawOverlays(this)
+        val usage = UsageStatsHelper.hasUsageAccess(this)
+        val notif = Build.VERSION.SDK_INT < 33 ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        val a11y = KeepAliveAccessibilityService.isEnabled(this)
+        return !overlay || !usage || !notif || !a11y
+    }
+
+    private fun renderRules(force: Boolean) {
+        val rules = RulesStore.overrides(this)
+        val key = rules.joinToString("|") { it.pkg + ":" + it.thresholdSec }
+        if (!force && key == lastRuleKey) return
+        lastRuleKey = key
+
+        rulesContainer.removeAllViews()
+        rulesEmpty.visibility = if (rules.isEmpty()) View.VISIBLE else View.GONE
         val inflater = LayoutInflater.from(this)
-        for ((pkg, ms) in apps) {
-            val row = inflater.inflate(R.layout.item_topapp, topAppsContainer, false)
-            val name = row.findViewById<TextView>(R.id.rowAppName)
-            val time = row.findViewById<TextView>(R.id.rowAppTime)
-            val bar = row.findViewById<ProgressBar>(R.id.rowBar)
-            name.text = appLabel(pkg)
-            time.text = UsageStatsHelper.formatDuration(ms)
-            bar.max = 100
-            bar.progress = ((ms * 100L) / maxMs).toInt().coerceIn(1, 100)
-            topAppsContainer.addView(row)
+        val density = resources.displayMetrics.density
+        for ((index, rule) in rules.withIndex()) {
+            if (index > 0) {
+                val div = View(this)
+                div.setBackgroundColor(ContextCompat.getColor(this, R.color.row_divider))
+                val lp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    (0.5f * density).toInt().coerceAtLeast(1)
+                )
+                lp.marginStart = (60 * density).toInt()
+                rulesContainer.addView(div, lp)
+            }
+            val row = inflater.inflate(R.layout.item_rule, rulesContainer, false)
+            bindRow(row, rule)
+            rulesContainer.addView(row)
         }
     }
 
-    private fun appLabel(pkg: String): String = try {
-        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
-    } catch (_: Exception) {
-        pkg
+    private fun bindRow(row: View, rule: RulesStore.AppRule) {
+        row.tag = rule.pkg
+        val icon = row.findViewById<ImageView>(R.id.rowIcon)
+        val name = row.findViewById<TextView>(R.id.rowAppName)
+        val duration = row.findViewById<TextView>(R.id.rowDuration)
+        val remove = row.findViewById<TextView>(R.id.rowRemove)
+        name.text = rule.label
+        duration.text = RulesStore.formatThreshold(rule.thresholdSec)
+        icon.setImageDrawable(
+            try {
+                packageManager.getApplicationIcon(rule.pkg)
+            } catch (_: Exception) {
+                getDrawable(android.R.drawable.sym_def_app_icon)
+            }
+        )
+        duration.setOnClickListener { showDurationPicker(rule) }
+        remove.setOnClickListener {
+            RulesStore.remove(this, rule.pkg)
+            renderRules(force = true)
+            updateLiveRemaining()
+        }
+    }
+
+    private fun updateLiveRemaining() {
+        val roundStart = Prefs.roundStart(this)
+        val running = Prefs.isRunning(this)
+        val totals = if (running && roundStart > 0L) {
+            UsageStatsHelper.totalsFor(this, roundStart, roundStart, System.currentTimeMillis())
+        } else {
+            emptyMap()
+        }
+        val rules = RulesStore.overrides(this).associateBy { it.pkg }
+        for (i in 0 until rulesContainer.childCount) {
+            val row = rulesContainer.getChildAt(i)
+            val pkg = row.tag as? String ?: continue
+            val rule = rules[pkg] ?: continue
+            val remainingView = row.findViewById<TextView>(R.id.rowRemaining)
+            val used = totals[pkg] ?: 0L
+            val limit = rule.thresholdSec * 1000L
+            when {
+                !running || roundStart <= 0L -> {
+                    remainingView.visibility = View.GONE
+                }
+                used >= limit && limit > 0L -> {
+                    remainingView.visibility = View.VISIBLE
+                    remainingView.text = getString(R.string.rules_reminded)
+                }
+                else -> {
+                    remainingView.visibility = View.VISIBLE
+                    val left = (limit - used).coerceAtLeast(0L)
+                    remainingView.text = getString(
+                        R.string.rules_used_left,
+                        UsageStatsHelper.formatDurationShort(left)
+                    )
+                }
+            }
+        }
+    }
+
+    private fun showDurationPicker(rule: RulesStore.AppRule) {
+        val labels = RulesStore.PRESETS.map { it.second } + getString(R.string.rules_duration_custom)
+        val current = RulesStore.PRESETS.indexOfFirst { it.first == rule.thresholdSec }
+        AlertDialog.Builder(this)
+            .setTitle(rule.label)
+            .setSingleChoiceItems(labels.toTypedArray(), current) { dialog, which ->
+                if (which < RulesStore.PRESETS.size) {
+                    RulesStore.upsert(this, rule.pkg, rule.label, RulesStore.PRESETS[which].first)
+                    renderRules(force = true)
+                    updateLiveRemaining()
+                    dialog.dismiss()
+                } else {
+                    dialog.dismiss()
+                    showCustomDuration(rule)
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun showCustomDuration(rule: RulesStore.AppRule) {
+        val input = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            hint = getString(R.string.rules_custom_hint)
+            val minutes = (rule.thresholdSec / 60L).coerceAtLeast(1L)
+            setText(minutes.toString())
+            setSelection(text.length)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.rules_custom_title))
+            .setView(input)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val minutes = input.text?.toString()?.trim()?.toLongOrNull() ?: return@setPositiveButton
+                if (minutes < 1L) {
+                    Toast.makeText(this, getString(R.string.rules_custom_hint), Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                RulesStore.upsert(this, rule.pkg, rule.label, minutes * 60L)
+                renderRules(force = true)
+                updateLiveRemaining()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 }

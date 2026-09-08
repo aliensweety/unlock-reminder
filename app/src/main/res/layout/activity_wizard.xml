@@ -22,11 +22,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:background="@drawable/bg_reminder_card"
-            android:backgroundTint="#EDEAFB"
+            android:background="@drawable/bg_banner"
             android:lineSpacingExtra="4dp"
             android:padding="12dp"
-            android:textColor="#37324E"
+            android:textColor="@color/ink"
             android:textSize="13sp" />
 
         <TextView
