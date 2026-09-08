@@ -48,8 +48,8 @@ class OverlayReminder(private val host: MonitorService) {
         }
         v.findViewById<Button>(R.id.btnConfirm).setOnClickListener { host.onOverlayConfirm() }
         v.findViewById<Button>(R.id.btnCancel).setOnClickListener { host.onOverlayCancel() }
-        // 返回键只有落在持有焦点的 View 上才会进 OnKeyListener（不可聚焦变体跳过）
-        if (attempt == 0) {
+        // 返回键只有落在持有焦点的 View 上才会进 OnKeyListener（仅可聚焦变体有效）
+        if (attempt == 1) {
             v.isFocusable = true
             v.isFocusableInTouchMode = true
             v.requestFocus()
@@ -63,15 +63,23 @@ class OverlayReminder(private val host: MonitorService) {
             }
         }
 
-        val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        // 三连击阶梯（Grok 建议：ColorOS 拦的是抢焦点的全屏窗，小窗往往放行）：
+        // 0=全屏不可聚焦 → 1=全屏可聚焦 → 2=居中小窗不可聚焦
+        val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
+            if (attempt == 2) WindowManager.LayoutParams.WRAP_CONTENT
+            else WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            if (attempt == 0) baseFlags else baseFlags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            when (attempt) {
+                0 -> baseFlags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                1 -> baseFlags or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                else -> baseFlags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+            },
             PixelFormat.TRANSLUCENT
         )
+        if (attempt == 2) params.gravity = android.view.Gravity.CENTER
         return try {
             wm.addView(v, params)
             view = v
@@ -86,8 +94,8 @@ class OverlayReminder(private val host: MonitorService) {
         val v = view ?: return
         if (v.isAttachedToWindow && v.windowToken != null) {
             host.onOverlayShown()
-        } else if (attempt == 0) {
-            attempt = 1
+        } else if (attempt < 2) {
+            attempt++
             removeQuietly()
             if (!tryAdd()) host.onOverlayFailed("RetryAddFailed")
         } else {
