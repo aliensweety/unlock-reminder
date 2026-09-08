@@ -55,6 +55,14 @@
         </service>
 
         <activity
+            android:name=".RulesActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".WizardActivity"
             android:exported="false" />
 

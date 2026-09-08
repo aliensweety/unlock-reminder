@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_reminder_card"
+    android:backgroundTint="#EFEDE7"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="14dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="10dp"
+    android:paddingBottom="8dp">
+
+    <TextView
+        android:id="@+id/rowAppName"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textSize="14sp" />
+
+    <Spinner
+        android:id="@+id/rowSpinner"
+        android:layout_width="120dp"
+        android:layout_height="40dp" />
+
+    <TextView
+        android:id="@+id/rowRemove"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:padding="6dp"
+        android:text="✕"
+        android:textColor="#B3261E"
+        android:textSize="16sp" />
+</LinearLayout>

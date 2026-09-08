@@ -60,20 +60,11 @@
             android:textSize="13sp"
             android:visibility="gone" />
 
-        <TextView
-            android:id="@+id/fireResultText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:textSize="12sp"
-            android:visibility="gone" />
-
         <com.google.android.material.card.MaterialCardView
             style="?attr/materialCardViewFilledStyle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
+            android:layout_marginTop="16dp"
             app:cardCornerRadius="20dp">
 
             <LinearLayout
@@ -89,59 +80,141 @@
                     android:text="@string/switch_monitor" />
 
                 <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="18dp"
-                    android:text="@string/interval_label"
-                    android:textAppearance="?attr/textAppearanceTitleSmall" />
-
-                <Spinner
-                    android:id="@+id/spinnerInterval"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:layout_marginTop="4dp" />
-
-                <LinearLayout
-                    android:id="@+id/customRow"
+                    android:id="@+id/fireResultText"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:visibility="gone">
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
-                    <EditText
-                        android:id="@+id/editCustom"
-                        android:layout_width="0dp"
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:baselineAligned="false"
+            android:orientation="horizontal">
+
+            <com.google.android.material.card.MaterialCardView
+                style="?attr/materialCardViewFilledStyle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                app:cardCornerRadius="20dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:id="@+id/kpiUnlocks"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:hint="@string/custom_hint"
-                        android:inputType="number"
-                        android:singleLine="true" />
+                        android:text="0"
+                        android:textAppearance="?attr/textAppearanceHeadlineMedium"
+                        android:textStyle="bold" />
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:text="@string/seconds_unit" />
+                        android:text="@string/kpi_unlocks"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/kpiUnlocksToday"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="?attr/colorPrimary"
+                        android:textSize="11sp" />
                 </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
-                <Button
-                    android:id="@+id/btnTest"
+            <com.google.android.material.card.MaterialCardView
+                style="?attr/materialCardViewFilledStyle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
+                android:layout_marginEnd="3dp"
+                android:layout_weight="1"
+                app:cardCornerRadius="20dp">
+
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:text="@string/btn_test" />
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="14dp">
 
-                <Button
-                    android:id="@+id/btnTestDelay"
-                    style="@style/Widget.Material3.Button.TonalButton"
+                    <TextView
+                        android:id="@+id/kpiRounds"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0"
+                        android:textAppearance="?attr/textAppearanceHeadlineMedium"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/kpi_rounds"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/kpiRoundsToday"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="?attr/colorPrimary"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
+                style="?attr/materialCardViewFilledStyle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                app:cardCornerRadius="20dp">
+
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:text="@string/btn_test_delay" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="14dp">
+
+                    <TextView
+                        android:id="@+id/kpiReminders"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="0"
+                        android:textAppearance="?attr/textAppearanceHeadlineMedium"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/kpi_reminders"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/kpiRemindersToday"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="?attr/colorPrimary"
+                        android:textSize="11sp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+        </LinearLayout>
 
         <com.google.android.material.card.MaterialCardView
             style="?attr/materialCardViewFilledStyle"
@@ -159,65 +232,31 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/perm_section"
+                    android:text="@string/topapps_title"
                     android:textAppearance="?attr/textAppearanceTitleSmall" />
 
-                <Button
-                    android:id="@+id/btnPermNotif"
-                    style="@style/PermButton"
+                <LinearLayout
+                    android:id="@+id/topAppsContainer"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp" />
-
-                <Button
-                    android:id="@+id/btnPermUsage"
-                    style="@style/PermButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-
-                <Button
-                    android:id="@+id/btnPermOverlay"
-                    style="@style/PermButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-
-                <Button
-                    android:id="@+id/btnPermBattery"
-                    style="@style/PermButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-
-                <Button
-                    android:id="@+id/btnPermFsi"
-                    style="@style/PermButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:visibility="gone" />
-
-                <Button
-                    android:id="@+id/btnPermA11y"
-                    style="@style/PermButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content" />
-
-                <Button
-                    android:id="@+id/btnWizard"
-                    style="@style/Widget.Material3.Button.TonalButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/btn_wizard" />
+                    android:layout_marginTop="10dp"
+                    android:orientation="vertical" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <TextView
-            android:id="@+id/hintText"
+        <Button
+            android:id="@+id/btnRules"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:lineSpacingExtra="4dp"
-            android:text="@string/hint_text"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:textSize="12sp" />
+            android:layout_marginTop="14dp"
+            android:text="@string/btn_rules" />
+
+        <Button
+            android:id="@+id/btnSettings"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/btn_settings" />
     </LinearLayout>
 </ScrollView>

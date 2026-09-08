@@ -19,14 +19,16 @@ import android.widget.TextView
 class OverlayReminder(private val host: MonitorService) {
 
     private var view: View? = null
+    private var heading = ""
     private var elapsed = 0L
     private var usage: List<String> = emptyList()
     private var attempt = 0
     private val handler = Handler(Looper.getMainLooper())
     private val verifyRunnable = Runnable { verify() }
 
-    fun show(elapsedMs: Long, usageList: List<String>): Boolean {
+    fun show(heading: String, elapsedMs: Long, usageList: List<String>): Boolean {
         if (view != null) return true
+        this.heading = heading
         elapsed = elapsedMs
         usage = usageList
         attempt = 0
@@ -39,6 +41,7 @@ class OverlayReminder(private val host: MonitorService) {
         val themed = ContextThemeWrapper(host, R.style.Theme_App)
         val v = LayoutInflater.from(themed).inflate(R.layout.view_reminder, null)
 
+        v.findViewById<TextView>(R.id.reminderTitle).text = heading
         v.findViewById<TextView>(R.id.elapsedText).text =
             host.getString(R.string.elapsed_prefix) + " " + UsageStatsHelper.formatDuration(elapsed)
         v.findViewById<TextView>(R.id.usageText).text = when {

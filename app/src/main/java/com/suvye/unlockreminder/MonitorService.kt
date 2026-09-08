@@ -65,7 +65,9 @@ class MonitorService : Service() {
     private var pendingLateTag = ""
     private var fireAtWall = 0L
     private var fireAtElapsed = 0L
-    private var statsCache: List<String> = emptyList()
+    private var pendingHeading = ""
+    private var statsCache: Map<String, Long> = emptyMap()
+    private val remindedApps = HashSet<String>()
 
     /** 心跳：看门狗闹钟据此判断服务是否被冻/被杀 */
     private val heartbeatRunnable = object : Runnable {
@@ -95,9 +97,31 @@ class MonitorService : Service() {
     private val statsPoller = object : Runnable {
         override fun run() {
             if (roundStart == 0L || scheduledRoundId == 0L) return
-            statsCache = UsageStatsHelper.topUsage(this@MonitorService, roundStart, System.currentTimeMillis())
-            android.util.Log.d("URFire", "poll cached=${statsCache.size} -> ${statsCache.joinToString("|")}")
+            val totals = UsageStatsHelper.totalsFor(this@MonitorService, roundStart, System.currentTimeMillis())
+            statsCache = totals
+            checkPerAppRules(totals)
             handler.postDelayed(this, 2_000L)
+        }
+    }
+
+    /** 分应用规则：本轮内某应用累计使用 ≥ 生效阈值 → 全屏提醒（每应用每轮一次） */
+    private fun checkPerAppRules(totals: Map<String, Long>) {
+        if (roundStart == 0L) return
+        if (System.currentTimeMillis() - roundStart < 3_000L) return
+        for ((pkg, ms) in totals) {
+            if (pkg in remindedApps) continue
+            val sec = RulesStore.effectiveSec(this, pkg)
+            if (sec <= 0 || ms < sec * 1000L) continue
+            remindedApps.add(pkg)
+            StatsStore.onReminder(this)
+            val label = try {
+                packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+            } catch (_: Exception) {
+                pkg
+            }
+            android.util.Log.d("URFire", "perAppRule hit $label ms=$ms sec=$sec")
+            presentReminder("$label 用了不少", ms, mapOf(pkg to ms))
+            break
         }
     }
 
@@ -106,7 +130,10 @@ class MonitorService : Service() {
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
-                Intent.ACTION_USER_PRESENT -> startRound()
+                Intent.ACTION_USER_PRESENT -> {
+                    StatsStore.onUnlock(context)
+                    startRound()
+                }
                 Intent.ACTION_SCREEN_OFF -> cancelRound()
             }
         }
@@ -216,6 +243,7 @@ class MonitorService : Service() {
     private fun startRound(overrideSeconds: Long = 0L) {
         roundStart = System.currentTimeMillis()
         scheduledRoundId = roundStart
+        remindedApps.clear()
         Prefs.setRoundStart(this, roundStart)
         Prefs.setRoundIntervalOverride(this, if (overrideSeconds > 0) overrideSeconds else 0L)
         handler.removeCallbacks(fireRunnable)
@@ -224,7 +252,7 @@ class MonitorService : Service() {
         val seconds = if (overrideSeconds > 0) overrideSeconds else Prefs.intervalSeconds(this)
         val intervalMs = seconds * 1000L
         handler.postDelayed(fireRunnable, intervalMs)
-        statsCache = emptyList()
+        statsCache = emptyMap()
         handler.removeCallbacks(statsPoller)
         handler.postDelayed(statsPoller, 2_000L)
         // 宏软件同款双保险：setAlarmClock 被系统视为真实闹钟，ColorOS/MIUI 不做闹钟对齐延迟，
@@ -251,7 +279,7 @@ class MonitorService : Service() {
         handler.removeCallbacks(fireRunnable)
         handler.removeCallbacks(countdownUpdater)
         handler.removeCallbacks(statsPoller)
-        statsCache = emptyList()
+        statsCache = emptyMap()
         overlayReminder.close()
         roundStart = 0L
         scheduledRoundId = 0L
@@ -259,6 +287,7 @@ class MonitorService : Service() {
         fireAtElapsed = 0L
         Prefs.clearRound(this)
         Prefs.setRoundIntervalOverride(this, 0L)
+        if (statsCache.isNotEmpty()) StatsStore.addAppUsage(this, statsCache)
         getSystemService(AlarmManager::class.java)?.cancel(fireAlarmPending())
         val nm = NotificationManagerCompat.from(this)
         nm.cancel(NOTIF_COUNTDOWN)
@@ -341,26 +370,37 @@ class MonitorService : Service() {
         pendingLateTag =
             if (lateMs > 15_000L) " · 迟到${lateMs / 1000L}秒（后台被冻结过）" else ""
         val elapsed = now - roundStart
-        // 到点统计：新鲜查询 ∨ 轮询缓存，取更全的一份（对抗事件入账延迟）
-        val freshUsage = UsageStatsHelper.topUsage(this, roundStart, now)
-        val usage =
-            if (statsCache.size > freshUsage.size) ArrayList(statsCache) else ArrayList(freshUsage)
-        statsCache = emptyList()
+        // 到点统计：新鲜查询 ∨ 轮询缓存按包取最大（对抗事件入账延迟）
+        val fresh = UsageStatsHelper.totalsFor(this, roundStart, now)
+        val merged = HashMap<String, Long>()
+        for ((k, v) in fresh) merged[k] = maxOf(v, statsCache[k] ?: 0L)
+        for ((k, v) in statsCache) merged.putIfAbsent(k, v)
+        statsCache = emptyMap()
         handler.removeCallbacks(statsPoller)
         Prefs.clearRound(this)
         Prefs.setRoundIntervalOverride(this, 0L)
         Prefs.setLastFireAt(this, now)
 
+        // 统计累计：轮次 +1，各应用本轮时长入账
+        StatsStore.onRoundEnd(this)
+        StatsStore.addAppUsage(this, merged)
+
         NotificationManagerCompat.from(this).cancel(NOTIF_COUNTDOWN)
         handler.removeCallbacks(countdownUpdater)
+        presentReminder(getString(R.string.time_up), elapsed, merged)
+    }
+
+    /** 统一提醒呈现链：悬浮窗浮层 → 页面兜底 → FSI 通知。全局到点与分应用触发共用。 */
+    private fun presentReminder(heading: String, elapsed: Long, totals: Map<String, Long>) {
         pendingElapsed = elapsed
-        pendingUsage = usage
+        pendingUsage = UsageStatsHelper.formatTop(totals, this)
+        pendingHeading = heading
 
         // ── 主路径：悬浮窗全屏浮层。挂载成功≠显示成功（ColorOS 会静默吞窗），
         //    OverlayReminder 500ms 后异步验证，成败经 onOverlayShown/onOverlayFailed 回调 ──
         val overlayGranted = Settings.canDrawOverlays(this)
-        android.util.Log.d("URFire", "fire late=${lateMs}ms overlayGranted=$overlayGranted pollCache=${statsCache.size}")
-        if (overlayGranted && overlayReminder.show(elapsed, usage)) {
+        android.util.Log.d("URFire", "present heading=$heading elapsed=$elapsed overlayGranted=$overlayGranted")
+        if (overlayGranted && overlayReminder.show(heading, elapsed, pendingUsage)) {
             markFire("浮层已挂载，验证中…" + pendingLateTag)
             return
         }
@@ -372,6 +412,7 @@ class MonitorService : Service() {
     private fun runFallback() {
         val content = Intent(this, ReminderActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            .putExtra(ReminderActivity.EXTRA_HEADING, pendingHeading)
             .putExtra(ReminderActivity.EXTRA_ELAPSED, pendingElapsed)
             .putStringArrayListExtra(ReminderActivity.EXTRA_USAGE, ArrayList(pendingUsage))
         try {

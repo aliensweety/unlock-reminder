@@ -12,6 +12,7 @@ import androidx.core.app.NotificationManagerCompat
 class ReminderActivity : AppCompatActivity() {
 
     companion object {
+        const val EXTRA_HEADING = "heading"
         const val EXTRA_ELAPSED = "elapsed"
         const val EXTRA_USAGE = "usage"
     }
@@ -58,6 +59,9 @@ class ReminderActivity : AppCompatActivity() {
         if (!cur.endsWith("提醒页 ✓")) {
             Prefs.setLastFire(this, if (cur.isEmpty()) "提醒页已打开 ✓" else "$cur → 提醒页 ✓")
         }
+
+        findViewById<TextView>(R.id.reminderTitle).text =
+            intent.getStringExtra(EXTRA_HEADING) ?: getString(R.string.time_up)
 
         val elapsed = intent.getLongExtra(EXTRA_ELAPSED, 0L)
         val usage = intent.getStringArrayListExtra(EXTRA_USAGE) ?: arrayListOf()

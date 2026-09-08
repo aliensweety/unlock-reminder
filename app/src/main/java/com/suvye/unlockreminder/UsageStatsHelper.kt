@@ -18,37 +18,56 @@ object UsageStatsHelper {
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
-    /**
-     * 聚合 [from, to] 内各应用前台时长，返回 "应用名 · 时长" 列表，按用时降序。
-     * 回看 30 分钟播种：解锁时已在前台的 App 往往不会再发 RESUMED 事件，
-     * 单指针配对会系统性漏记，因此按包名维护 open map，PAUSED/STOPPED 收尾，
-     * 窗口结束仍未闭合的会话记到窗口末尾（应用被强杀收不到 PAUSED 时由这里兜底）。
-     */
-    fun topUsage(ctx: Context, from: Long, to: Long, limit: Int = 8): List<String> {
-        if (!hasUsageAccess(ctx)) return emptyList()
-        val usm = ctx.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
-            ?: return emptyList()
+    /** 轮内各应用使用毫秒原始 totals，供分应用规则引擎使用 */
+    fun totalsFor(ctx: Context, from: Long, to: Long): Map<String, Long> = computeTotals(ctx, from, to)
 
-        // 回看 6 小时：防「RESUMED 早于窗口 + 一直没 PAUSED」的长会话漏记，超出本轮的段会被夹紧
+    /** totals → "应用名 · 时长" 列表（排除自身与 0 秒噪音） */
+    fun formatTop(totals: Map<String, Long>, ctx: Context, limit: Int = 8): List<String> {
+        val pm = ctx.packageManager
+        return totals.entries
+            .filter { it.key != ctx.packageName }
+            .filter { it.value >= 1_000L } // 0 秒的系统组件（photopicker/IntentResolver 等）是噪音
+            .sortedByDescending { it.value }
+            .take(limit)
+            .map { (pkg, ms) ->
+                val label = try {
+                    pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+                } catch (_: Exception) {
+                    pkg
+                }
+                "$label · ${formatDuration(ms)}"
+            }
+    }
+
+    fun topUsage(ctx: Context, from: Long, to: Long, limit: Int = 8): List<String> =
+        formatTop(computeTotals(ctx, from, to), ctx, limit)
+
+    /**
+     * 聚合 [from, to] 内各应用前台时长。回看 6 小时播种：解锁时已在前台的 App 往往
+     * 不会再发 RESUMED 事件；按包名做 open/close 计数配平（应用内切页是新 Activity
+     * 先 RESUMED、旧 Activity 后 PAUSED，简单开关记录会提前关会话漏记），
+     * 窗口末尾仍未闭合的会话计到窗口末尾并截断 15 分钟（防强杀僵尸会话整轮误记）。
+     */
+    private fun computeTotals(ctx: Context, from: Long, to: Long): Map<String, Long> {
+        if (!hasUsageAccess(ctx)) return emptyMap()
+        val usm = ctx.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+            ?: return emptyMap()
+
         val lookbackMs = 6 * 60 * 60 * 1000L
         val totals = HashMap<String, Long>()
-        // 按包名做 open/close 计数配平：应用内切页是新 Activity 先 RESUMED、旧 Activity 后 PAUSED，
-        // 简单的开/关记录会把会话提前关掉漏记，计数法才能扛住多 Activity 与分屏
         val openCount = HashMap<String, Int>()
         val resumeAt = HashMap<String, Long>()
 
         val events = try {
             usm.queryEvents(maxOf(0L, from - lookbackMs), to)
         } catch (_: Exception) {
-            return emptyList()
+            return emptyMap()
         }
         val event = UsageEvents.Event()
-        var rawCount = 0
         try {
             while (events.hasNextEvent()) {
                 events.getNextEvent(event)
                 val pkg = event.packageName ?: continue
-                rawCount++
                 when (event.eventType) {
                     UsageEvents.Event.ACTIVITY_RESUMED -> {
                         val c = openCount[pkg] ?: 0
@@ -72,28 +91,13 @@ object UsageStatsHelper {
         } catch (_: Exception) {
             // 个别 OEM 事件流异常：用已收集到的部分结算
         }
-        // 到窗口末尾仍未 PAUSED 的会话：正常计到窗口末尾，但防强杀/崩溃的僵尸会话整轮误记，截断 15 分钟
         for (pkg in resumeAt.keys.toList()) {
             val start = resumeAt[pkg] ?: continue
             credit(totals, pkg, start, minOf(to, start + 15 * 60 * 1000L), from, to)
         }
         openCount.clear()
         resumeAt.clear()
-
-        val pm = ctx.packageManager
-        return totals.entries
-            .filter { it.key != ctx.packageName }
-            .filter { it.value >= 1_000L } // 0 秒的系统组件（photopicker/IntentResolver 等）是噪音
-            .sortedByDescending { it.value }
-            .take(limit)
-            .map { (pkg, ms) ->
-                val label = try {
-                    pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
-                } catch (_: Exception) {
-                    pkg
-                }
-                "$label · ${formatDuration(ms)}"
-            }
+        return totals
     }
 
     /** 记入一段时长：只统计与提醒窗口 [from, to] 的交集 */
