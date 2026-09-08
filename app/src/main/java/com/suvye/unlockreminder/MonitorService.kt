@@ -99,6 +99,7 @@ class MonitorService : Service() {
             if (roundStart == 0L || scheduledRoundId == 0L) return
             val totals = UsageStatsHelper.totalsFor(this@MonitorService, roundStart, System.currentTimeMillis())
             statsCache = totals
+            if (RulesStore.rulesActive(this@MonitorService)) updateRulesNotification(totals)
             checkPerAppRules(totals)
             handler.postDelayed(this, 2_000L)
         }
@@ -256,9 +257,10 @@ class MonitorService : Service() {
         handler.removeCallbacks(statsPoller)
         handler.postDelayed(statsPoller, 2_000L)
 
-        // 规则模式（设置了分应用规则）下，全局倒计时让位：到点弹窗由规则引擎驱动
+        // 规则模式（设置了分应用规则）下，全局倒计时让位：到点弹窗由规则引擎驱动，
+        // 通知栏直接显示每个规则应用的剩余倒计时
         if (overrideSeconds <= 0 && RulesStore.rulesActive(this)) {
-            showRoundNotification()
+            updateRulesNotification(UsageStatsHelper.totalsFor(this, roundStart, System.currentTimeMillis()))
             return
         }
 
@@ -276,17 +278,33 @@ class MonitorService : Service() {
         showCountdownNotification(intervalMs)
     }
 
-    /** 规则模式下的轮次通知：无倒计时，仅表示本轮进行中 */
-    private fun showRoundNotification() {
+    /** 规则模式下的通知：逐行显示每个规则应用的剩余倒计时（每 2 秒随轮询刷新） */
+    private fun updateRulesNotification(totals: Map<String, Long>) {
+        val rules = RulesStore.overrides(this)
+        val sb = StringBuilder()
+        for (r in rules) {
+            val used = totals[r.pkg] ?: 0L
+            val remaining = (r.thresholdSec * 1000L - used).coerceAtLeast(0L)
+            sb.append("${r.label} 剩余 ${UsageStatsHelper.formatDuration(remaining)}\n")
+        }
+        if (rules.isEmpty() && RulesStore.defaultSec(this) > 0) {
+            sb.append("全局默认 · ${UsageStatsHelper.formatDuration(RulesStore.defaultSec(this) * 1000L)} 后提醒\n")
+        }
+        if (sb.isEmpty()) return
+
         val stopIntent = PendingIntent.getService(
             this, 1,
             Intent(this, MonitorService::class.java).setAction(ACTION_CANCEL_ROUND),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        val views = RemoteViews(packageName, R.layout.notification_countdown)
+        views.setTextViewText(R.id.notifTime, sb.toString().trim())
+        views.setTextViewText(R.id.notifHint, getString(R.string.countdown_body))
         val notification = NotificationCompat.Builder(this, CH_COUNTDOWN)
             .setSmallIcon(R.drawable.ic_stat_timer)
-            .setContentTitle(getString(R.string.round_title))
-            .setContentText(getString(R.string.round_body))
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            .setCustomContentView(views)
+            .setCustomBigContentView(views)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(stopIntent)

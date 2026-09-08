@@ -56,21 +56,6 @@
                 android:text="@string/seconds_unit" />
         </LinearLayout>
 
-        <Button
-            android:id="@+id/btnTest"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="@string/btn_test" />
-
-        <Button
-            android:id="@+id/btnTestDelay"
-            style="@style/Widget.Material3.Button.TonalButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:text="@string/btn_test_delay" />
-
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

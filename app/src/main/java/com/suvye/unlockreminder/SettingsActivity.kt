@@ -75,30 +75,6 @@ class SettingsActivity : AppCompatActivity() {
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
-        findViewById<Button>(R.id.btnTest).setOnClickListener {
-            if (!Prefs.isRunning(this)) {
-                Toast.makeText(this, "请先在首页打开开关", Toast.LENGTH_SHORT).show()
-            } else {
-                applyCustom()
-                startService(
-                    Intent(this, MonitorService::class.java)
-                        .setAction(MonitorService.ACTION_START_ROUND)
-                )
-            }
-        }
-        findViewById<Button>(R.id.btnTestDelay).setOnClickListener {
-            if (!Prefs.isRunning(this)) {
-                Toast.makeText(this, "请先在首页打开开关", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "5 秒后到点！请立刻切到微信或桌面等待弹窗", Toast.LENGTH_LONG).show()
-                startService(
-                    Intent(this, MonitorService::class.java)
-                        .setAction(MonitorService.ACTION_START_ROUND)
-                        .putExtra(MonitorService.EXTRA_INTERVAL_OVERRIDE, 5L)
-                )
-            }
-        }
-
         editCustom.setOnEditorActionListener { _, _, _ -> applyCustom(); true }
         editCustom.setOnFocusChangeListener { _, hasFocus -> if (!hasFocus) applyCustom() }
 

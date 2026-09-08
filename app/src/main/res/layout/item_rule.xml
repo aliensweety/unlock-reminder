@@ -3,7 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="@drawable/bg_reminder_card"
-    android:backgroundTint="#EFEDE7"
+    android:backgroundTint="#FFFFFF"
     android:gravity="center_vertical"
     android:orientation="horizontal"
     android:paddingStart="14dp"
@@ -16,6 +16,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
+        android:textColor="#1C1B1F"
         android:textSize="14sp" />
 
     <Spinner
