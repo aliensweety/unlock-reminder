@@ -58,6 +58,8 @@
     <string name="rules_footer">提醒语义：本轮（解锁后）某应用累计使用达到其时长即全屏提醒，同一应用同一轮只提醒一次；点「确定」开新轮重新计算，灭屏/取消结束本轮。</string>
     <string name="rules_pick_title">选择应用（可多选）</string>
     <string name="rules_pick_ok">添加</string>
+    <string name="round_title">本轮进行中</string>
+    <string name="round_body">分应用提醒监控中 · 点按停止本轮</string>
     <string name="ch_monitor">后台运行</string>
     <string name="ch_countdown">倒计时进行中</string>
     <string name="ch_alarm">到点提醒</string>

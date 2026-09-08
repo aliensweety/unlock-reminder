@@ -255,6 +255,13 @@ class MonitorService : Service() {
         statsCache = emptyMap()
         handler.removeCallbacks(statsPoller)
         handler.postDelayed(statsPoller, 2_000L)
+
+        // 规则模式（设置了分应用规则）下，全局倒计时让位：到点弹窗由规则引擎驱动
+        if (overrideSeconds <= 0 && RulesStore.rulesActive(this)) {
+            showRoundNotification()
+            return
+        }
+
         // 宏软件同款双保险：setAlarmClock 被系统视为真实闹钟，ColorOS/MIUI 不做闹钟对齐延迟，
         // 且无需 SCHEDULE_EXACT_ALARM 权限；进程被速冻时由系统闹钟破冻叫醒到点
         val am = getSystemService(AlarmManager::class.java)
@@ -267,6 +274,25 @@ class MonitorService : Service() {
             am.setAlarmClock(AlarmManager.AlarmClockInfo(fireAt, showIntent), fireAlarmPending())
         }
         showCountdownNotification(intervalMs)
+    }
+
+    /** 规则模式下的轮次通知：无倒计时，仅表示本轮进行中 */
+    private fun showRoundNotification() {
+        val stopIntent = PendingIntent.getService(
+            this, 1,
+            Intent(this, MonitorService::class.java).setAction(ACTION_CANCEL_ROUND),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(this, CH_COUNTDOWN)
+            .setSmallIcon(R.drawable.ic_stat_timer)
+            .setContentTitle(getString(R.string.round_title))
+            .setContentText(getString(R.string.round_body))
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(stopIntent)
+            .addAction(0, getString(R.string.btn_stop_short), stopIntent)
+            .build()
+        safeNotify(NOTIF_COUNTDOWN, notification)
     }
 
     /** 本轮实际间隔：诊断测试的临时覆盖优先 */

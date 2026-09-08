@@ -102,6 +102,7 @@ class MainActivity : AppCompatActivity() {
         val roundStart = Prefs.roundStart(this)
 
         statusText.text = when {
+            running && roundStart > 0 && RulesStore.rulesActive(this) -> "分应用提醒监控中 · 规则触发时弹出"
             running && roundStart > 0 -> {
                 val ov = Prefs.roundIntervalOverride(this)
                 val intervalMs = (if (ov > 0) ov else Prefs.intervalSeconds(this)) * 1000

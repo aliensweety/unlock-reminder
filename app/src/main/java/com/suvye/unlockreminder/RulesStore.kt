@@ -63,4 +63,8 @@ object RulesStore {
         overrides(ctx).firstOrNull { it.pkg == pkg }?.let { return it.thresholdSec }
         return defaultSec(ctx)
     }
+
+    /** 规则模式开启中（默认>0 或存在覆盖行）：此时全局倒计时让位给分应用规则 */
+    fun rulesActive(ctx: Context): Boolean =
+        defaultSec(ctx) > 0 || overrides(ctx).isNotEmpty()
 }
