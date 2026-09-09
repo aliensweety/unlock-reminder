@@ -52,7 +52,6 @@ class OverlayReminder(private val host: MonitorService) {
             else -> host.getString(R.string.usage_empty_no_perm)
         }
         v.findViewById<Button>(R.id.btnConfirm).setOnClickListener { host.onOverlayConfirm() }
-        v.findViewById<Button>(R.id.btnCancel).setOnClickListener { host.onOverlayCancel() }
         // 返回键只有落在持有焦点的 View 上才会进 OnKeyListener（仅可聚焦变体有效）
         if (attempt == 1) {
             v.isFocusable = true

@@ -94,6 +94,17 @@
             app:strokeColor="@color/outline" />
 
         <Button
+            android:id="@+id/btnHideNotif"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:fontFamily="sans-serif-medium"
+            android:textColor="@color/ink"
+            android:text="@string/btn_hide_notif"
+            app:strokeColor="@color/outline" />
+
+        <Button
             android:id="@+id/btnResetStats"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"

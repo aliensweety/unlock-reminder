@@ -26,7 +26,6 @@ class ReminderActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         findViewById<Button>(R.id.btnConfirm).setOnClickListener { finish() }
-        findViewById<Button>(R.id.btnCancel).setOnClickListener { cancelRound() }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {

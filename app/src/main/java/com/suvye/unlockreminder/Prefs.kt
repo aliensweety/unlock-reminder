@@ -15,6 +15,7 @@ object Prefs {
     private const val KEY_STEALTH_DOT = "keepalive_stealth_dot"
     private const val KEY_CREDITED = "credited_json"
     private const val KEY_CREDITED_ROUND = "credited_round"
+    private const val KEY_HIDE_NOTIF_DETAILS = "hide_notif_details"
 
     const val DEFAULT_INTERVAL_SECONDS = 10L
     const val MIN_INTERVAL_SECONDS = 5L
@@ -77,6 +78,13 @@ object Prefs {
 
     fun setKeepaliveStealth(ctx: Context, value: Boolean) {
         sp(ctx).edit().putBoolean(KEY_STEALTH_DOT, value).apply()
+    }
+
+    /** 隐藏通知栏详情：开了之后通知只显示「监控中」，不显示任何剩余倒计时 */
+    fun hideNotifDetails(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_HIDE_NOTIF_DETAILS, false)
+
+    fun setHideNotifDetails(ctx: Context, value: Boolean) {
+        sp(ctx).edit().putBoolean(KEY_HIDE_NOTIF_DETAILS, value).apply()
     }
 
     /**

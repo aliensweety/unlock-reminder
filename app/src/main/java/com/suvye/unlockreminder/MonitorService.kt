@@ -132,6 +132,7 @@ class MonitorService : Service() {
         }
     }
 
+    /** 计时语义：开启开关即开始计时；解锁只是把各应用时间重置（灭屏不清轮）。 */
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
@@ -139,7 +140,6 @@ class MonitorService : Service() {
                     StatsStore.onUnlock(context)
                     startRound()
                 }
-                Intent.ACTION_SCREEN_OFF -> cancelRound()
             }
         }
     }
@@ -181,6 +181,10 @@ class MonitorService : Service() {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
+            else -> if (roundStart == 0L && Prefs.isRunning(this)) {
+                // 开启提醒（开关/开机自启/覆盖安装）即开始计时，不等解锁
+                startRound()
+            }
         }
         return START_STICKY
     }
@@ -205,17 +209,18 @@ class MonitorService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    /** 服务被杀后重建：屏幕仍亮则恢复本轮，否则丢掉。 */
+    /**
+     * 服务（重）建：开关开着就一直有轮——有轮恢复轮，没轮立即开新轮。
+     * 解锁负责重置，灭屏不再清轮。
+     */
     private fun recoverRoundIfNeeded() {
         val start = Prefs.roundStart(this)
         if (start <= 0L) {
-            updateMonitorNotification()
-            return
-        }
-        val interactive = getSystemService(PowerManager::class.java)?.isInteractive == true
-        if (!interactive) {
-            Prefs.clearRound(this)
-            updateMonitorNotification()
+            if (Prefs.isRunning(this)) {
+                startRound()
+            } else {
+                updateMonitorNotification()
+            }
             return
         }
         roundStart = start
@@ -519,19 +524,29 @@ class MonitorService : Service() {
         }
 
         var lines = ArrayList<String>()
-        for (r in rules) {
-            val used = totals[r.pkg] ?: 0L
-            val remaining = (r.thresholdSec * 1000L - used).coerceAtLeast(0L)
-            val times = StatsStore.todayRemindersFor(this, r.pkg)
+        if (Prefs.hideNotifDetails(this)) {
+            // 设置里开了「隐藏通知详情」：只显示最简状态
+            lines.add(getString(R.string.notif_monitoring))
+        } else {
+            // 单行摘要：剩得最少的那个应用（不再罗列全部倒计时）
+            val nearest = rules.mapNotNull { r ->
+                val used = totals[r.pkg] ?: 0L
+                val remaining = (r.thresholdSec * 1000L - used).coerceAtLeast(0L)
+                Triple(remaining, r.label, r.pkg)
+            }.minByOrNull { it.first }
             lines.add(
-                if (times > 0) getString(R.string.notif_left_counted, r.label, UsageStatsHelper.formatDurationShort(remaining), times)
-                else getString(R.string.notif_left, r.label, UsageStatsHelper.formatDurationShort(remaining))
+                if (nearest == null) getString(R.string.notif_monitoring)
+                else getString(
+                    R.string.notif_next_left,
+                    nearest.second,
+                    UsageStatsHelper.formatDurationShort(nearest.first)
+                )
             )
         }
-        var fixUsage = false
-        var fixA11y = false
         val a11yEnabledSomewhere = KeepAliveAccessibilityService.isEnabled(this)
         val a11yAlive = ForegroundLedger.connected
+        var fixUsage = false
+        var fixA11y = false
         if (statsStale >= STALE_LIMIT || !UsageStatsHelper.hasUsageAccess(this) || (a11yEnabledSomewhere && !a11yAlive)) {
             // 统计链路受损：usage 被挂起 / 无障碍断绑 / 两源全停。「时间不减」的前兆，必须可见。
             lines = ArrayList(lines).apply { add(0, getString(R.string.notif_stats_warn)) }

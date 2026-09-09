@@ -80,8 +80,9 @@
     <string name="status_need_apps">先添加应用</string>
     <string name="notif_remaining">剩余</string>
     <string name="notif_more">还有 %1$d 个</string>
-    <string name="notif_left">%1$s  剩余 %2$s</string>
-    <string name="notif_left_counted">%1$s  剩余 %2$s · 今日%3$d次</string>
+    <string name="notif_monitoring">监控中 · 解锁重置计时</string>
+    <string name="notif_next_left">计时中 · %1$s 剩余 %2$s</string>
+    <string name="btn_hide_notif">隐藏通知详情</string>
     <string name="notif_stats_warn">⚠ 统计受限，时长可能不准</string>
     <string name="notif_fix_stats">修复统计权限</string>
     <string name="notif_fix_a11y">修复无障碍</string>

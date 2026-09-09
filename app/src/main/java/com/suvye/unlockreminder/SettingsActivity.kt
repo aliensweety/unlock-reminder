@@ -96,6 +96,16 @@ class SettingsActivity : AppCompatActivity() {
             startService(Intent(this, MonitorService::class.java).setAction(MonitorService.ACTION_REFRESH_DOT))
         }
         markStealth(btnStealthDot, Prefs.keepaliveStealth(this))
+
+        val btnHideNotif = findViewById<Button>(R.id.btnHideNotif)
+        btnHideNotif.setOnClickListener {
+            val next = !Prefs.hideNotifDetails(this)
+            Prefs.setHideNotifDetails(this, next)
+            btnHideNotif.text = marked(getString(R.string.btn_hide_notif), next)
+            // 立即刷新通知栏
+            startService(Intent(this, MonitorService::class.java).setAction(MonitorService.ACTION_FIRE_NOW))
+        }
+        btnHideNotif.text = marked(getString(R.string.btn_hide_notif), Prefs.hideNotifDetails(this))
         findViewById<TextView>(R.id.versionText).text = "v" + BuildConfig.VERSION_NAME
         findViewById<Button>(R.id.btnResetStats).setOnClickListener {
             AlertDialog.Builder(this)
@@ -141,6 +151,9 @@ class SettingsActivity : AppCompatActivity() {
     private fun markStealth(btn: Button, on: Boolean) {
         btn.text = if (on) getString(R.string.btn_stealth_dot) + "  ✓" else getString(R.string.btn_stealth_dot)
     }
+
+    private fun marked(label: String, on: Boolean): String =
+        if (on) "$label  ✓" else label
 
     private fun notifGranted(): Boolean =
         Build.VERSION.SDK_INT < 33 ||
