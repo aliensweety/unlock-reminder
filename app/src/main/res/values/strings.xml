@@ -54,6 +54,8 @@
     <string name="rules_title">应用</string>
     <string name="rules_desc"> </string>
     <string name="rules_default">默认</string>
+    <string name="rules_default_desc">不在上列应用时计时</string>
+    <string name="rules_duration_off">关闭</string>
     <string name="rules_overrides">应用</string>
     <string name="rules_add">添加</string>
     <string name="rules_empty">还没有应用</string>

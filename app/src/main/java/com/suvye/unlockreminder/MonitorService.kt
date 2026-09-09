@@ -50,6 +50,9 @@ class MonitorService : Service() {
 
         /** 连续这么多次轮询两源都无变化（×2 秒），判定统计被系统限制，通知栏告警 */
         private const val STALE_LIMIT = 10
+
+        /** 默认倒计时在统计/提醒记录里的伪包名 */
+        const val DEFAULT_PKG = "__default__"
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -70,11 +73,19 @@ class MonitorService : Service() {
     private var homePkgs: Set<String> = emptySet()
     private var homeReadAt = 0L
 
+    /** 默认倒计时入账：亮屏 + 前台不在已选应用（2 秒粒度） */
+    private var screenOn = true
+    private var lastTickElapsed = 0L
+    private var defaultUsedMs = 0L
+
     /** 循环提醒重置基准：pkg → 该应用提醒时刻的 raw 累计毫秒。effective = raw − credited。 */
     private val credited = HashMap<String, Long>()
 
     /** 当前浮层对应的应用（「知道了」时把浮层显示期间的增长一并 credited） */
     private var hitPkg: String? = null
+
+    /** 当前浮层是不是默认倒计时触发的（「知道了」时把浮层期间的增长一并清零） */
+    private var defaultHitPending = false
 
     private val heartbeatRunnable = object : Runnable {
         override fun run() {
@@ -92,10 +103,42 @@ class MonitorService : Service() {
         override fun run() {
             if (roundStart == 0L || scheduledRoundId == 0L) return
             refreshStats()
+            accrueDefault()
             checkPerAppRules()
+            checkDefaultRule()
             updateMonitorNotification(statsCache)
             handler.postDelayed(this, 2_000L)
         }
+    }
+
+    /** 默认倒计时入账：亮屏且前台不是已选应用的时间都往默认账上记（桌面/未选应用/自己界面） */
+    private fun accrueDefault() {
+        val now = SystemClock.elapsedRealtime()
+        val last = lastTickElapsed
+        lastTickElapsed = now
+        if (last == 0L || !screenOn) return
+        val fg = ForegroundLedger.currentForeground()
+        if (fg != null && RulesStore.effectiveSec(this, fg) > 0L) return
+        // 单笔封顶 60 秒：进程被冻很久后醒来，避免一笔记入超长未知时段
+        val dt = (now - last).coerceIn(0L, 60_000L)
+        defaultUsedMs += dt
+        Prefs.setDefaultUsed(this, roundStart, defaultUsedMs)
+    }
+
+    /** 默认倒计时：不在已选应用的累计 ≥ 默认时长 → 弹一次，从 0 重新计（循环） */
+    private fun checkDefaultRule() {
+        if (roundStart == 0L || overlayReminder.isShowing()) return
+        val sec = Prefs.defaultSec(this)
+        if (sec <= 0L) return
+        if (defaultUsedMs < sec * 1000L) return
+        if (System.currentTimeMillis() - roundStart < 3_000L) return
+        val used = defaultUsedMs
+        defaultUsedMs = 0L
+        Prefs.setDefaultUsed(this, roundStart, 0L)
+        StatsStore.onReminder(this, DEFAULT_PKG)
+        android.util.Log.d("URFire", "defaultRule hit used=$used sec=$sec")
+        defaultHitPending = true
+        presentReminder(getString(R.string.rules_default), used, statsCache)
     }
 
     private fun refreshStats() {
@@ -131,6 +174,7 @@ class MonitorService : Service() {
             }
             android.util.Log.d("URFire", "perAppRule hit $label ms=$ms sec=$sec credited=${credited[pkg]}")
             hitPkg = pkg
+            defaultHitPending = false
             presentReminder(label, ms, statsCache)
             break
         }
@@ -144,6 +188,11 @@ class MonitorService : Service() {
                     StatsStore.onUnlock(context)
                     startRound()
                 }
+                Intent.ACTION_SCREEN_OFF -> screenOn = false
+                Intent.ACTION_SCREEN_ON -> {
+                    screenOn = true
+                    lastTickElapsed = SystemClock.elapsedRealtime()
+                }
             }
         }
     }
@@ -155,6 +204,7 @@ class MonitorService : Service() {
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_USER_PRESENT)
             addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
         }
         ContextCompat.registerReceiver(this, screenReceiver, filter, ContextCompat.RECEIVER_EXPORTED)
         receiverRegistered = true
@@ -231,6 +281,8 @@ class MonitorService : Service() {
         scheduledRoundId = start
         credited.clear()
         credited.putAll(Prefs.credited(this, start))
+        defaultUsedMs = Prefs.defaultUsed(this, start)
+        lastTickElapsed = SystemClock.elapsedRealtime()
         ForegroundLedger.startRound(start, SystemClock.elapsedRealtime())
         handler.removeCallbacks(statsPoller)
         handler.post(statsPoller)
@@ -249,6 +301,11 @@ class MonitorService : Service() {
             statsCache = statsCache.toMutableMap().apply { put(pkg, 0L) }
         }
         hitPkg = null
+        if (defaultHitPending) {
+            defaultHitPending = false
+            defaultUsedMs = 0L
+            if (roundStart > 0L) Prefs.setDefaultUsed(this, roundStart, 0L)
+        }
         updateMonitorNotification(statsCache)
     }
 
@@ -267,6 +324,10 @@ class MonitorService : Service() {
         Prefs.setCredited(this, roundStart, emptyMap())
         statsStale = 0
         lastRaw = emptyMap()
+        defaultUsedMs = 0L
+        screenOn = true
+        lastTickElapsed = SystemClock.elapsedRealtime()
+        Prefs.setDefaultUsed(this, roundStart, 0L)
         Prefs.setRoundStart(this, roundStart)
         Prefs.setRoundIntervalOverride(this, 0L)
         NotificationManagerCompat.from(this).cancel(NOTIF_ALARM)
@@ -285,7 +346,9 @@ class MonitorService : Service() {
             return
         }
         refreshStats()
+        accrueDefault()
         checkPerAppRules()
+        checkDefaultRule()
         updateMonitorNotification(statsCache)
         scheduleNextRuleAlarm(statsCache)
     }
@@ -305,6 +368,11 @@ class MonitorService : Service() {
             if (used <= 0L) continue
             val remaining = r.thresholdSec * 1000L - used
             if (remaining > 0L) delay = minOf(delay, remaining)
+        }
+        val defSec = Prefs.defaultSec(this)
+        if (defSec > 0L && roundStart > 0L) {
+            val remaining = defSec * 1000L - Prefs.defaultUsed(this, roundStart)
+            if (remaining in 1 until delay) delay = remaining
         }
         delay = delay.coerceIn(2_000L, 60_000L)
         val am = getSystemService(AlarmManager::class.java) ?: return
@@ -331,6 +399,7 @@ class MonitorService : Service() {
         statsCache = emptyMap()
         statsStale = 0
         lastRaw = emptyMap()
+        defaultUsedMs = 0L
         overlayReminder.close()
         roundStart = 0L
         scheduledRoundId = 0L
@@ -541,9 +610,10 @@ class MonitorService : Service() {
             // 设置里开了「隐藏通知详情」：只显示最简状态
             lines.add(getString(R.string.notif_monitoring))
         } else {
-            // 跟随当前前台应用：在用哪个就显示哪个的剩余时间；桌面（没开应用）或无规则时显示默认状态
+            // 跟随当前前台应用：在用已选应用就显示它的剩余；否则显示默认倒计时（永远有数在走）
             val fg = ForegroundLedger.currentForeground()
             val fgSec = if (fg != null && !isHome(fg)) RulesStore.effectiveSec(this, fg) else 0L
+            val defSec = Prefs.defaultSec(this)
             if (fg != null && fgSec > 0L) {
                 val remaining = (fgSec * 1000L - (totals[fg] ?: 0L)).coerceAtLeast(0L)
                 val label = try {
@@ -552,6 +622,16 @@ class MonitorService : Service() {
                     fg
                 }
                 lines.add(getString(R.string.notif_next_left, label, UsageStatsHelper.formatDurationShort(remaining)))
+            } else if (defSec > 0L) {
+                val used = if (roundStart > 0L) Prefs.defaultUsed(this, roundStart) else defaultUsedMs
+                val remaining = (defSec * 1000L - used).coerceAtLeast(0L)
+                lines.add(
+                    getString(
+                        R.string.notif_next_left,
+                        getString(R.string.rules_default),
+                        UsageStatsHelper.formatDurationShort(remaining)
+                    )
+                )
             } else {
                 lines.add(getString(R.string.notif_monitoring))
             }
@@ -560,11 +640,12 @@ class MonitorService : Service() {
         val a11yAlive = ForegroundLedger.connected
         var fixUsage = false
         var fixA11y = false
-        if (statsStale >= STALE_LIMIT || !UsageStatsHelper.hasUsageAccess(this) || (a11yEnabledSomewhere && !a11yAlive)) {
-            // 统计链路受损：usage 被挂起 / 无障碍断绑 / 两源全停。「时间不减」的前兆，必须可见。
+        if (statsStale >= STALE_LIMIT || !UsageStatsHelper.hasUsageAccess(this) || !a11yEnabledSomewhere || !a11yAlive) {
+            // 统计链路受损：usage 被挂起 / 无障碍被关闭或断绑 / 两源全停。
+            // 无障碍被整体关掉（覆盖安装后 ColorOS 常干）时前台跟随和实时计时都会失效，必须可见。
             lines = ArrayList(lines).apply { add(0, getString(R.string.notif_stats_warn)) }
             fixUsage = !UsageStatsHelper.hasUsageAccess(this)
-            fixA11y = a11yEnabledSomewhere && !a11yAlive
+            fixA11y = !a11yEnabledSomewhere || !a11yAlive
         }
         val text = when {
             lines.isEmpty() -> getString(R.string.monitor_need_apps)

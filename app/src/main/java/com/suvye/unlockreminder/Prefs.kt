@@ -16,10 +16,16 @@ object Prefs {
     private const val KEY_CREDITED = "credited_json"
     private const val KEY_CREDITED_ROUND = "credited_round"
     private const val KEY_HIDE_NOTIF_DETAILS = "hide_notif_details"
+    private const val KEY_DEFAULT_SEC = "default_threshold_sec"
+    private const val KEY_DEFAULT_USED = "default_used_ms"
+    private const val KEY_DEFAULT_USED_ROUND = "default_used_round"
 
     const val DEFAULT_INTERVAL_SECONDS = 10L
     const val MIN_INTERVAL_SECONDS = 5L
     const val MAX_INTERVAL_SECONDS = 86400L
+
+    /** 默认倒计时出厂值：不在已选应用里的时间按它计 */
+    const val DEFAULT_THRESHOLD_SECONDS = 600L
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
@@ -85,6 +91,25 @@ object Prefs {
 
     fun setHideNotifDetails(ctx: Context, value: Boolean) {
         sp(ctx).edit().putBoolean(KEY_HIDE_NOTIF_DETAILS, value).apply()
+    }
+
+    /** 默认倒计时（秒）：前台不在已选应用时按它计，0 = 关 */
+    fun defaultSec(ctx: Context): Long = sp(ctx).getLong(KEY_DEFAULT_SEC, DEFAULT_THRESHOLD_SECONDS)
+
+    fun setDefaultSec(ctx: Context, seconds: Long) {
+        sp(ctx).edit().putLong(KEY_DEFAULT_SEC, seconds.coerceAtLeast(0L)).apply()
+    }
+
+    /** 默认倒计时本轮已入账毫秒（roundStart 校验，换轮作废）；写穿持久化防服务重建丢账 */
+    fun defaultUsed(ctx: Context, roundStart: Long): Long =
+        if (sp(ctx).getLong(KEY_DEFAULT_USED_ROUND, 0L) != roundStart) 0L
+        else sp(ctx).getLong(KEY_DEFAULT_USED, 0L)
+
+    fun setDefaultUsed(ctx: Context, roundStart: Long, ms: Long) {
+        sp(ctx).edit()
+            .putLong(KEY_DEFAULT_USED_ROUND, roundStart)
+            .putLong(KEY_DEFAULT_USED, ms.coerceAtLeast(0L))
+            .apply()
     }
 
     /**
