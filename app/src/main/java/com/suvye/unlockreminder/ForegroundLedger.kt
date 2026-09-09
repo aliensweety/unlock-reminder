@@ -36,8 +36,19 @@ object ForegroundLedger {
 
     fun onWindowChanged(pkg: String, nowElapsed: Long) {
         if (pkg == "com.android.systemui") return
-        if (pkg == appContext?.packageName) return
         if (pkg == currentIme()) return
+        if (pkg == appContext?.packageName) {
+            // 自己的窗口（首页/浮层/提醒页）不算前台应用：闭合当前段并清空，
+            // 否则上一个包在我们界面里持续虚账增长（v0.13.0 记录的边角 bug）
+            synchronized(lock) {
+                val cur = currentPkg
+                if (cur != null && roundId != 0L && nowElapsed > enteredAt) {
+                    closed[cur] = (closed[cur] ?: 0L) + (nowElapsed - enteredAt)
+                }
+                currentPkg = null
+            }
+            return
+        }
         synchronized(lock) {
             val cur = currentPkg
             if (cur == pkg) return
@@ -68,6 +79,9 @@ object ForegroundLedger {
 
     /** 账本轮次是否与当前轮匹配（不匹配 = 账本不可信，统计回退纯 queryEvents） */
     fun isLive(rid: Long): Boolean = synchronized(lock) { rid != 0L && roundId == rid }
+
+    /** 当前前台应用包名（null = 桌面/锁屏/自己的界面），通知栏跟随显示用 */
+    fun currentForeground(): String? = synchronized(lock) { currentPkg }
 
     /** 本轮各包累计（闭合段 + 当前段实时增长，无封顶） */
     fun totals(nowElapsed: Long): Map<String, Long> = synchronized(lock) {

@@ -66,6 +66,10 @@ class MonitorService : Service() {
     private var statsCache: Map<String, Long> = emptyMap()
     private var statsStale = 0
 
+    /** 桌面包名集合（60 秒缓存），前台是桌面 = 「没开应用」，通知栏回默认文案 */
+    private var homePkgs: Set<String> = emptySet()
+    private var homeReadAt = 0L
+
     /** 循环提醒重置基准：pkg → 该应用提醒时刻的 raw 累计毫秒。effective = raw − credited。 */
     private val credited = HashMap<String, Long>()
 
@@ -466,12 +470,6 @@ class MonitorService : Service() {
             )
             builder.addAction(0, getString(R.string.fix_overlay), fixPending)
         }
-        val stopPending = PendingIntent.getService(
-            this, 3,
-            Intent(this, MonitorService::class.java).setAction(ACTION_CANCEL_ROUND),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        builder.addAction(0, getString(R.string.btn_end_round), stopPending)
         safeNotify(NOTIF_ALARM, builder.build())
     }
 
@@ -495,6 +493,21 @@ class MonitorService : Service() {
 
     private fun updateMonitorNotification(totals: Map<String, Long> = emptyMap()) {
         pushForeground(buildMonitorNotification(totals))
+    }
+
+    private fun isHome(pkg: String): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        if (now - homeReadAt > 60_000L) {
+            homeReadAt = now
+            homePkgs = try {
+                packageManager.queryIntentActivities(
+                    Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0
+                ).mapNotNull { it.activityInfo?.packageName }.toSet()
+            } catch (_: Exception) {
+                emptySet()
+            }
+        }
+        return pkg in homePkgs
     }
 
     /** 前台服务只有这一条通知：等待解锁，或列出每个应用剩余时间。 */
@@ -528,20 +541,20 @@ class MonitorService : Service() {
             // 设置里开了「隐藏通知详情」：只显示最简状态
             lines.add(getString(R.string.notif_monitoring))
         } else {
-            // 单行摘要：剩得最少的那个应用（不再罗列全部倒计时）
-            val nearest = rules.mapNotNull { r ->
-                val used = totals[r.pkg] ?: 0L
-                val remaining = (r.thresholdSec * 1000L - used).coerceAtLeast(0L)
-                Triple(remaining, r.label, r.pkg)
-            }.minByOrNull { it.first }
-            lines.add(
-                if (nearest == null) getString(R.string.notif_monitoring)
-                else getString(
-                    R.string.notif_next_left,
-                    nearest.second,
-                    UsageStatsHelper.formatDurationShort(nearest.first)
-                )
-            )
+            // 跟随当前前台应用：在用哪个就显示哪个的剩余时间；桌面（没开应用）或无规则时显示默认状态
+            val fg = ForegroundLedger.currentForeground()
+            val fgSec = if (fg != null && !isHome(fg)) RulesStore.effectiveSec(this, fg) else 0L
+            if (fg != null && fgSec > 0L) {
+                val remaining = (fgSec * 1000L - (totals[fg] ?: 0L)).coerceAtLeast(0L)
+                val label = try {
+                    packageManager.getApplicationLabel(packageManager.getApplicationInfo(fg, 0)).toString()
+                } catch (_: Exception) {
+                    fg
+                }
+                lines.add(getString(R.string.notif_next_left, label, UsageStatsHelper.formatDurationShort(remaining)))
+            } else {
+                lines.add(getString(R.string.notif_monitoring))
+            }
         }
         val a11yEnabledSomewhere = KeepAliveAccessibilityService.isEnabled(this)
         val a11yAlive = ForegroundLedger.connected
@@ -583,12 +596,6 @@ class MonitorService : Service() {
             )
             builder.addAction(0, getString(R.string.notif_fix_a11y), fixPending)
         }
-        val stopIntent = PendingIntent.getService(
-            this, 1,
-            Intent(this, MonitorService::class.java).setAction(ACTION_CANCEL_ROUND),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        builder.addAction(0, getString(R.string.btn_end_round), stopIntent)
         return builder.build()
     }
 

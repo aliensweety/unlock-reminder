@@ -1,20 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">解锁提醒</string>
+    <string name="app_name">时长提醒</string>
     <string name="monitor_waiting">等待解锁</string>
     <string name="monitor_need_apps">添加应用</string>
     <string name="monitor_hint">等待解锁</string>
     <string name="countdown_title">距离下次提醒</string>
     <string name="countdown_body">打开</string>
-    <string name="btn_stop_short">结束本轮</string>
-    <string name="btn_end_round">结束本轮</string>
     <string name="time_up">时间到</string>
     <string name="tap_to_view">点按查看</string>
     <string name="elapsed_prefix">已使用</string>
     <string name="usage_empty">本轮没有记录</string>
     <string name="usage_empty_no_perm">未开启使用情况访问</string>
     <string name="btn_confirm">知道了</string>
-    <string name="btn_cancel">结束本轮</string>
     <string name="switch_monitor">开启提醒</string>
     <string name="switch_monitor_sub"> </string>
     <string name="interval_label">提醒间隔</string>
@@ -37,7 +34,7 @@
     <string name="wizard_step_battery">电池优化</string>
     <string name="wizard_step_a11y">无障碍</string>
     <string name="wizard_step_oem">自启动 / 后台弹出</string>
-    <string name="accessibility_label">解锁提醒保活</string>
+    <string name="accessibility_label">时长提醒保活</string>
     <string name="accessibility_desc">保证到点准时弹出、准确统计前台应用。只识别应用名，不读取屏幕内容。</string>
     <string name="wizard_footer">OPPO：应用信息 → 权限管理 → 后台弹出界面；允许自启。开关是灰的：应用信息 → 允许受限设置。</string>
     <string name="kpi_unlocks">解锁</string>
@@ -53,7 +50,7 @@
     <string name="reset_msg">不可恢复。</string>
     <string name="reset_ok">清空</string>
     <string name="reset_done">已清空</string>
-    <string name="settings_version">解锁提醒</string>
+    <string name="settings_version">时长提醒</string>
     <string name="rules_title">应用</string>
     <string name="rules_desc"> </string>
     <string name="rules_default">默认</string>
